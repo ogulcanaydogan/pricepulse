@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PricePulse · Profile</title>
+    <link rel="stylesheet" href="assets/css/styles.css" />
+  </head>
+  <body data-page="profile">
+    <header>
+      <div class="brand">
+        <span>£</span>
+        <div>
+          <div style="font-size: 18px;">PricePulse</div>
+          <small style="opacity: 0.8;">Family price tracking hub</small>
+        </div>
+      </div>
+      <nav>
+        <a href="index.html" data-page="dashboard">Dashboard</a>
+        <a href="add-item.html" data-page="add-item">Add item</a>
+        <a href="notifications.html" data-page="notifications">Notifications</a>
+        <a href="profile.html" data-page="profile">Profile</a>
+      </nav>
+    </header>
+
+    <main>
+      <h1>Profile & preferences</h1>
+      <p class="page-subtitle">
+        Manage how your household receives alerts, which currency you prefer, and when the
+        daily digest email lands in your inbox.
+      </p>
+
+      <section class="card">
+        <h2 style="margin-bottom: 24px;">Account</h2>
+        <form id="profile-form" class="grid" style="gap: 24px;">
+          <div class="form-grid">
+            <div>
+              <label for="fullName">Full name</label>
+              <input type="text" id="fullName" name="fullName" required />
+            </div>
+            <div>
+              <label for="email">Email</label>
+              <input type="email" id="email" name="email" required />
+            </div>
+          </div>
+
+          <div class="form-grid">
+            <div>
+              <label for="timezone">Timezone</label>
+              <select id="timezone" name="timezone">
+                <option>Europe/Istanbul</option>
+                <option>Europe/London</option>
+                <option>Europe/Berlin</option>
+                <option>America/New_York</option>
+              </select>
+            </div>
+            <div>
+              <label for="currency">Currency</label>
+              <select id="currency" name="currency">
+                <option>GBP</option>
+                <option>EUR</option>
+                <option>USD</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-grid">
+            <div>
+              <label for="theme">Theme</label>
+              <select id="theme" name="theme">
+                <option>Aurora</option>
+                <option>Midnight</option>
+                <option>Sunrise</option>
+              </select>
+            </div>
+            <div>
+              <label for="digestTime">Daily digest time</label>
+              <input type="time" id="digestTime" name="digestTime" />
+            </div>
+          </div>
+
+          <div class="grid" style="gap: 16px;">
+            <label class="toggle">
+              <input type="checkbox" id="dailyDigest" name="dailyDigest" />
+              Send me a daily price digest email
+            </label>
+            <label class="toggle">
+              <input type="checkbox" id="smsAlerts" name="smsAlerts" />
+              Enable SMS alerts for urgent drops
+            </label>
+            <label class="toggle">
+              <input type="checkbox" id="familyTags" name="familyTags" />
+              Show who added each item in the dashboard
+            </label>
+          </div>
+
+          <div class="form-actions">
+            <button class="btn btn-primary" type="submit">Save preferences</button>
+            <button class="btn btn-secondary" type="button" data-reset-demo>Reset demo data</button>
+          </div>
+        </form>
+      </section>
+    </main>
+
+    <div class="footer">All changes are stored locally for this preview.</div>
+
+    <div class="toast" role="status" aria-live="polite"></div>
+    <script src="assets/js/app.js" defer></script>
+  </body>
+</html>

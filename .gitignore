@@ -1,0 +1,25 @@
+# Node
+node_modules/
+frontend/node_modules/
+frontend/dist/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Terraform
+infra/.terraform/
+infra/.terraform.lock.hcl
+
+# Lambda build artifacts
+infra/lambda_api/*.dist-info/
+infra/lambda_api/*.egg-info/
+infra/lambda_worker/*.dist-info/
+infra/lambda_worker/*.egg-info/
+infra/lambda_api/__pycache__/
+infra/lambda_worker/__pycache__/
+
+# OS
+.DS_Store
+Thumbs.db

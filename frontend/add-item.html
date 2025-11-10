@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PricePulse · Add item</title>
+    <link rel="stylesheet" href="assets/css/styles.css" />
+  </head>
+  <body data-page="add-item">
+    <header>
+      <div class="brand">
+        <span>£</span>
+        <div>
+          <div style="font-size: 18px;">PricePulse</div>
+          <small style="opacity: 0.8;">Family price tracking hub</small>
+        </div>
+      </div>
+      <nav>
+        <a href="index.html" data-page="dashboard">Dashboard</a>
+        <a href="add-item.html" data-page="add-item">Add item</a>
+        <a href="notifications.html" data-page="notifications">Notifications</a>
+        <a href="profile.html" data-page="profile">Profile</a>
+      </nav>
+    </header>
+
+    <main>
+      <h1>Add a new product</h1>
+      <p class="page-subtitle">
+        Paste a product URL and set the ideal target price. We'll take care of checking it on
+        the schedule you choose.
+      </p>
+
+      <section class="grid" style="grid-template-columns: minmax(320px, 1.4fr) minmax(260px, 1fr); gap: 28px;">
+        <article class="card">
+          <h2 style="margin-bottom: 24px;">Product details</h2>
+          <form id="add-item-form" class="grid" style="gap: 24px;">
+            <div class="form-grid">
+              <div>
+                <label for="name">Product name</label>
+                <input type="text" id="name" name="name" placeholder="e.g. Camper Oruga Sandals" required />
+              </div>
+              <div>
+                <label for="store">Store</label>
+                <input type="text" id="store" name="store" placeholder="e.g. Camper EU" required />
+              </div>
+            </div>
+
+            <div>
+              <label for="url">Product URL</label>
+              <input type="url" id="url" name="url" placeholder="https://" required />
+            </div>
+
+            <div class="form-grid">
+              <div>
+                <label for="currentPrice">Current price</label>
+                <input type="number" id="currentPrice" name="currentPrice" min="0" step="0.01" required />
+              </div>
+              <div>
+                <label for="targetPrice">Target price</label>
+                <input type="number" id="targetPrice" name="targetPrice" min="0" step="0.01" required />
+              </div>
+            </div>
+
+            <div class="form-grid">
+              <div>
+                <label for="frequency">Check frequency</label>
+                <select id="frequency" name="frequency">
+                  <option>Every 6 hours</option>
+                  <option selected>Every 12 hours</option>
+                  <option>Daily</option>
+                  <option>Every 2 days</option>
+                </select>
+              </div>
+              <div>
+                <label for="addedBy">Who is this for?</label>
+                <select id="addedBy" name="addedBy">
+                  <option>Oğulcan</option>
+                  <option>Mina</option>
+                  <option>Ayşe</option>
+                  <option>Guest</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-actions">
+              <button class="btn btn-primary" type="submit">Save to watchlist</button>
+              <button class="btn btn-secondary" type="button" id="quick-fill">Quick fill demo data</button>
+              <button class="btn btn-ghost" type="button" data-reset-demo>Reset demo data</button>
+            </div>
+          </form>
+        </article>
+
+        <aside class="card">
+          <h2 style="margin-bottom: 18px;">Recently tracked</h2>
+          <div id="recent-items" class="timeline"></div>
+          <div class="timeline-item" style="margin-top: 16px;">
+            <strong>Tips</strong>
+            <span>Use the quick fill button to see how the flow works.</span>
+            <span>Family tags let everyone know who requested the item.</span>
+          </div>
+        </aside>
+      </section>
+    </main>
+
+    <div class="footer">Need a new idea? Try the inspiration cards on the dashboard.</div>
+
+    <div class="toast" role="status" aria-live="polite"></div>
+    <script src="assets/js/app.js" defer></script>
+  </body>
+</html>
