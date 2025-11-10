@@ -1,34 +1,44 @@
-# PricePulse – Multi-User AWS Price Tracker
+# 🪙 PricePulse — Multi-User AWS Price Tracker
 
-**Live domain:** `price.ogulcanaydogan.com`
-
-PricePulse is a serverless application that helps households monitor online product prices and receive alerts when items drop below their target price. The platform supports multiple users so family members can maintain individual watchlists under the same account.
-
----
-
-## Overview
-
-PricePulse combines a static web experience with an AWS-native backend. Users authenticate with Amazon Cognito, add URLs to monitor, define target prices, and receive email or SMS notifications when the current price meets their criteria. A scheduled worker Lambda scans each watchlist on a recurring basis to keep price data current.
+**price.ogulcanaydogan.com**  
+Personal and family-friendly web app to track online product prices and get notified when prices drop.
 
 ---
 
-## Architecture
+## 🚀 Overview
 
+PricePulse is a **serverless AWS-based price monitoring platform**.  
+Users can register (via Cognito), add URLs to track, set target prices, and receive alerts when prices fall below their targets.  
+Supports multiple users (e.g., family members) each with their own watchlists.
+
+---
+
+## 🧩 Architecture
+
+**AWS Services Used**
 | Layer | AWS Service | Purpose |
-|-------|-------------|---------|
-| User Interface | Amazon S3 + CloudFront | Hosts the static frontend prototype |
-| Authentication | Amazon Cognito User Pool | Manages sign-in, registration, and JWT issuance |
-| API | Amazon API Gateway + AWS Lambda (Python) | Provides CRUD endpoints for watchlist items |
-| Storage | Amazon DynamoDB | Persists user-specific price tracking data |
-| Scheduler | Amazon EventBridge | Triggers the worker Lambda on a defined cron schedule |
-| Worker | AWS Lambda (Python) | Fetches prices, updates DynamoDB, and issues notifications |
-| Notifications | Amazon SNS / Amazon SES | Delivers alert emails or optional SMS messages |
-| Infrastructure as Code | Terraform | Deploys and manages all AWS resources |
-| CI/CD | Jenkins + GitHub | Automates packaging and deployment on push |
+|-------|--------------|----------|
+| UI | **S3 + CloudFront** | Host static web frontend at `price.ogulcanaydogan.com` |
+| Auth | **Cognito User Pool** | Multi-user sign-in / registration |
+| API | **API Gateway + Lambda (Python)** | CRUD for items (add / update / delete / list) |
+| Storage | **DynamoDB** | Store user-specific watchlists |
+| Scheduler | **EventBridge (cron)** | Trigger daily scan Lambda |
+| Worker | **Lambda (Python)** | Fetch prices & send alerts |
+| Notifications | **SNS / SES** | Email or SMS alerts |
+| IaC | **Terraform** | Infrastructure as Code |
+| CI/CD | **Jenkins + GitHub** | Auto-deploy infra & code on push |
 
 ---
 
-## Repository Structure
+## 🕐 Scan Frequency
+
+- Default: **Once or twice daily** (09:00 & 21:00 UTC)
+- Configurable in Terraform: `cron(0 9 * * ? *)` and/or `cron(0 21 * * ? *)`
+- Each item may have optional `frequency_minutes` override for flexible scanning.
+
+---
+
+## 🧰 Repository Structure
 
 ```
 pricepulse/
@@ -37,6 +47,7 @@ pricepulse/
 │   ├── variables.tf
 │   ├── outputs.tf
 │   ├── dist/
+│   │   └── .gitkeep
 │   ├── lambda_api/
 │   │   ├── lambda_function.py
 │   │   └── requirements.txt
@@ -57,69 +68,56 @@ pricepulse/
 
 ---
 
-## Core Features
+## 🧠 Core Features (MVP)
 
-- Multi-user authentication using Amazon Cognito
-- Add, edit, delete, and list price watch items
-- Scheduled price checks powered by AWS Lambda and EventBridge
-- Email notifications (with optional SMS) when target prices are met
-- Infrastructure managed end-to-end with Terraform
-- Static HTML prototype to demonstrate the dashboard, notifications, and profile flows
+✅ Multi-user (family members can each log in)  
+✅ Add product URLs and target prices  
+✅ Daily scanning & alerting via AWS Lambda  
+✅ Email (and optional SMS) notifications  
+✅ Secure login with AWS Cognito  
+✅ Easy-to-use UI on `price.ogulcanaydogan.com`  
+✅ Infrastructure fully managed by Terraform  
+✅ Auto-deployment via Jenkins pipeline
 
 ---
 
-## Getting Started
+## 🛠️ Getting Started
 
 ### Prerequisites
 
-- Terraform 1.4 or later
-- Python 3.11 with `pip`
-- AWS CLI configured with permissions to create IAM, Lambda, DynamoDB, API Gateway, SNS, S3, and CloudFront resources
+- Terraform 1.4+
+- Node.js 18+
+- Python 3.11 + pip
+- AWS credentials with permissions to create the resources listed below
 
-### Package the Lambda dependencies
-
-Install Python dependencies into the Lambda source folders so Terraform can bundle them when creating the ZIP archives:
+### Bootstrap the infrastructure
 
 ```bash
 cd infra
-python -m venv .venv
-source .venv/bin/activate
+python -m venv .venv && source .venv/bin/activate
 pip install -r lambda_api/requirements.txt -t lambda_api/
 pip install -r lambda_worker/requirements.txt -t lambda_worker/
-```
-
-### Deploy the infrastructure
-
-```bash
-cd infra
 terraform init
 terraform apply
 ```
 
-Important Terraform variables:
+The Terraform apply step outputs the API endpoint, Cognito pool IDs, and SNS topic ARN. When you connect the prototype to
+live services, reference those values from your chosen frontend build system.
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `aws_region` | AWS region for the deployment | `us-east-1` |
-| `environment` | Environment suffix added to resource names | `dev` |
-| `frontend_bucket_name` | Optional override for the S3 bucket name | empty string |
-| `cloudfront_alternate_domain_names` | List of custom domains served by CloudFront | `[]` |
-| `acm_certificate_arn` | ACM certificate ARN required when custom domains are provided | empty string |
-| `enable_sms_notifications` | Whether to create an SNS SMS subscription | `false` |
-| `allowed_cors_origins` | List of origins permitted to call the HTTP API | `[*]` |
+### Preview the UI locally
 
-The `terraform apply` output includes the API endpoint, Cognito user pool details, SNS topic ARN, CloudFront distribution domain name, and the S3 bucket name that hosts the frontend.
-
-### Preview the static UI locally
-
-The repository ships with a static HTML prototype of the user experience. Any static file server will work; the example below uses Python:
+The repository ships with a static HTML prototype of the family dashboard so you can review the
+experience without installing Node.js packages. Serve it with any static file server — for
+example Python's built-in option:
 
 ```bash
 cd frontend
 python -m http.server 4173
 ```
 
-Open `http://localhost:4173/` in your browser to explore the dashboard, add-item flow, notification history, and profile preferences. Demo data is stored in local storage so the prototype behaves like a live application.
+Then open `http://localhost:4173/` in your browser. The preview persists demo data in your
+browser's local storage so you can navigate between the dashboard, add-item flow, notification
+history, and profile preferences as if the app were live.
 
 ### Trigger the worker manually
 
@@ -131,84 +129,177 @@ aws lambda invoke \
 cat response.json
 ```
 
-The worker fetches prices, updates DynamoDB, and publishes alerts to the SNS topic when thresholds are met.
+The worker fetches prices, updates the DynamoDB table, and publishes alerts to the SNS topic when thresholds are met.
 
 ---
 
-## UI Design Reference
+## 💡 UI Design Overview
 
-Frontend: static HTML and CSS prototype (mirrors the planned React experience), hosted on S3 and delivered through CloudFront.
+**Frontend:** Static HTML/CSS prototype (mirrors planned React experience), hosted on S3 + CloudFront.
 
-### Pages
+### 🔹 Pages
+| Page | Description |
+|-------|-------------|
+| **Dashboard** | List of all tracked items |
+| **Add Item** | URL input → auto-detect price → set target price |
+| **Notifications** | Choose e-mail or SMS alerts |
+| **Profile** | Change password, timezone, frequency preference |
 
-| Page | Purpose |
-|------|---------|
-| Dashboard | Displays the full list of tracked items |
-| Add Item | Collects product URL, target price, and notification preferences |
-| Notifications | Shows recent alerts and delivery channel information |
-| Profile | Stores user preferences such as timezone, frequency, and contact data |
-
-### Dashboard Table Columns
-
+### 🔹 Dashboard Table Fields
 | Column | Description |
-|--------|-------------|
-| Product | URL or product name extracted from the source |
-| Last Price | Most recent price captured by the worker |
-| Target | Desired threshold that triggers an alert |
-| Status | Indicates whether tracking is active or paused |
-| Last Checked | Timestamp of the latest scan |
-| Actions | Edit, delete, or send a test notification |
+|---------|-------------|
+| Product | URL or product name (auto-extracted) |
+| Last Price | Last fetched value |
+| Target | Desired threshold |
+| Status | Active / Disabled |
+| Last Checked | UTC timestamp |
+| Actions | Edit / Delete / Test |
 
-### Example User Flow
-
-1. User logs in through Cognito and lands on the dashboard.
-2. From the Add Item page the user provides a product URL and target price.
-3. The system extracts a price preview and saves the watch entry.
-4. The worker Lambda scans each item on the configured schedule.
-5. When the current price is less than or equal to the target, SNS delivers an email (and optionally an SMS) alert.
+### 🔹 Sample UI flow
+- User logs in → “Add Item” → enters Camper product URL  
+- System extracts price preview (via `/test-extract`)  
+- User sets target price and saves  
+- Worker Lambda scans daily, sends SNS email if condition met  
 
 ---
 
-## Future Enhancements
+## 🧰 Lambda Functions
+
+| Function | Description |
+|----------|-------------|
+| `lambda_api` | Handles authenticated CRUD requests from API Gateway. Supports create/update/delete/list operations per Cognito user and can trigger immediate notification tests. |
+| `lambda_worker` | Scheduled by EventBridge twice daily. Scrapes tracked product pages, updates pricing metadata, and publishes alerts to SNS when the current price meets user targets. |
+
+Each Lambda shares the DynamoDB table defined in Terraform and publishes messages to the shared SNS topic.
+
+---
+
+## 🔔 Notification Logic
+
+- If `current_price <= target_price` → send alert via SNS/SES  
+- Each item notifies **once per 24h** to prevent spam  
+- Users can disable notifications per item in UI  
+
+---
+
+## 🧱 Terraform Modules (planned)
+
+| Module | Purpose |
+|--------|----------|
+| `lambda_worker` | Price scanner Lambda |
+| `lambda_api` | CRUD + Auth API |
+| `dynamodb` | PriceWatch table |
+| `cognito` | Auth and user pool setup |
+| `eventbridge` | Scheduler rules (daily) |
+| `sns` | Notification system |
+| `frontend` | S3 + CloudFront setup |
+
+---
+
+## ⚙️ Jenkins Pipeline
+
+| Stage | Action |
+|--------|--------|
+| **Checkout** | Clone from GitHub |
+| **Prepare Lambda Package** | Install dependencies + zip for deploy |
+| **Terraform Init/Validate** | Ensure syntax and modules ready |
+| **Plan** | `terraform plan` with variables |
+| **Apply** | `terraform apply -auto-approve` on main branch |
+| **Notify** | Email if build fails |
+
+Auto-triggers on push to `main` branch.
+
+---
+
+## 🕐 Deployment
+
+1️⃣ **Terraform**
+```bash
+cd infra
+terraform init
+terraform apply -auto-approve
+aws lambda invoke \
+  --function-name price-worker \
+  --payload '{}' \
+  output.json
+cd frontend
+npm run build
+aws s3 sync dist/ s3://price.ogulcanaydogan.com/ --delete
+```
+
+| Area | Tool |
+|------|------|
+| Infra | Terraform |
+| CI/CD | Jenkins |
+| Backend | Python 3.11 + Boto3 + BeautifulSoup |
+| Frontend | React (Vite or Next.js) |
+| Auth | Cognito |
+| Storage | DynamoDB |
+| Notifications | SNS / SES |
+| Scheduler | EventBridge |
+| Hosting | S3 + CloudFront |
+
+---
+
+## 🧩 Advanced / Future Features
 
 | Feature | Description |
-|---------|-------------|
-| Smart Selector | Automatically detect the correct price element from product pages |
-| Price History | Persist previous values to display trends |
-| Charts | Visualize price movements over time |
-| Browser Extension | Add products directly from a browser button |
-| Progressive Web App | Offer an installable mobile-friendly experience |
-| Multi-Currency Support | Convert prices between major currencies |
-| Role-Based Access | Support admin and member roles for households |
-| Daily Digest Emails | Summarize watched items even when no alerts are triggered |
-| Telegram Bot Integration | Send price alerts through Telegram |
-| Machine Learning Insights | Predict price drops based on historical data |
+|----------|-------------|
+| 🕵️‍♂️ Smart Selector | Auto-detect CSS/XPath from user input |
+| 💹 Price History | Store and plot previous values |
+| 📊 Charts | Visualize price trends (Recharts/Chart.js) |
+| 🪄 Browser Extension | Add products directly from Chrome |
+| 📱 PWA / Mobile App | Installable web app |
+| 🌍 Multi-Currency | Convert GBP↔USD↔EUR automatically |
+| 🔐 MFA & Roles | Family roles: admin / member |
+| 🧾 Daily Digest | “Your watched items summary” email |
+| 🤖 Telegram Bot | Receive price alerts via Telegram |
+| 🧠 AI Insight (Phase 2) | Predict next price drop using ML |
+| 🧰 API Tokens | Allow 3rd-party integration (Zapier, IFTTT) |
 
 ---
 
-## Security Considerations
+## 🪪 IAM & Security Highlights
 
-- IAM roles follow the principle of least privilege for Lambda and supporting services.
-- All public endpoints enforce HTTPS via CloudFront.
-- Cognito JWTs are validated by API Gateway to authorize API requests.
-- DynamoDB and SNS data is encrypted at rest.
-- CloudWatch metrics and logs capture runtime behavior for monitoring and alerting.
-
----
-
-## Deployment Pipeline
-
-The Jenkins pipeline defined in `Jenkinsfile` performs the following stages on each push to the main branch:
-
-1. Checkout source code from GitHub.
-2. Install Lambda dependencies and build deployment artifacts.
-3. Run `terraform fmt`, `terraform validate`, and `terraform plan`.
-4. Apply infrastructure changes after approval (or automatically on main).
-5. Upload the static frontend to the provisioned S3 bucket.
-6. Notify maintainers when a build fails.
+- Least privilege IAM (Lambda limited to specific ARNs)  
+- HTTPS enforced (CloudFront + ACM)  
+- Cognito JWT verified by API Gateway authorizer  
+- CloudWatch monitoring & alarms  
+- Data encrypted at rest (DynamoDB + SNS)  
 
 ---
 
-## Support
+## 📦 Deployment Checklist
 
-For feature ideas or issues, open a GitHub discussion or issue in this repository so the team can coordinate next steps.
+1. Confirm Terraform state bucket and DynamoDB lock table exist.
+2. Run Terraform workflow (init → validate → plan → apply).
+3. Package Lambda functions (worker + API) and upload artifacts.
+4. Deploy frontend build to S3 bucket behind CloudFront.
+5. Test Cognito signup/sign-in flow with multi-user scenario.
+6. Trigger worker Lambda manually to verify price fetch & SNS.
+7. Monitor CloudWatch metrics and alarms post-deployment.
+
+---
+
+## 🪄 Ek UI & Feature Önerileri (Aile Kullanımı için)
+
+| Kategori | Öneri | Neden |
+|-----------|--------|-------|
+| 👥 Çoklu kullanıcı yönetimi | Kullanıcı adını üst menüde göster, “Aile üyesi ekle” butonu (Cognito invite flow) | Eşin/annen kendi e-postalarıyla girebilsin |
+| 🏷️ Etiket sistemi | Her item’e “kim ekledi” etiketi (Anne / Eşim / Ben) | Ortak listelerde kimin eklediğini gösterir |
+| 🕰️ Bildirim geçmişi | UI’da “en son bildirim zamanı” sütunu | Kimin ne zaman bildirim aldığı izlenebilir |
+| 📱 Mobil PWA | iPhone ana ekrana eklenebilir hafif app | Telefonlardan kolay erişim |
+| 🌙 Tema | Koyu / açık tema toggle | Aile üyeleri için erişilebilirlik |
+| 🧾 Günlük özet maili | “Bugün izlenen fiyatlar” e-postası | Fiyat düşmese de genel görünüm sağlar |
+| 🔔 Push Notification (VAPID) | Web push izinli tarayıcı bildirimi | SMS yerine ücretsiz push |
+| 🪄 AI Selector Assistant | URL’deki fiyatı otomatik bul | Teknik bilmeyen kullanıcılar için kolaylık |
+| 🛍️ Site logoları | Bilinen mağazalar (Camper, Zara, Amazon) için favicon/brand rengi göster | Görsel olarak ayırt etmesi kolay olur |
+
+---
+
+## 📞 Contact & Next Steps
+
+- Repo name: **pricepulse** (can be adjusted if needed).  
+- Ready to export this README as `pricepulse_README.md` for GitHub if desired.  
+- Next decision: proceed with this repo name or update before publishing.
+
