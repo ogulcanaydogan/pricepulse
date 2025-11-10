@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PricePulse · Dashboard</title>
+    <link rel="stylesheet" href="assets/css/styles.css" />
+  </head>
+  <body data-page="dashboard">
+    <header>
+      <div class="brand">
+        <span>£</span>
+        <div>
+          <div style="font-size: 18px;">PricePulse</div>
+          <small style="opacity: 0.8;">Family price tracking hub</small>
+        </div>
+      </div>
+      <nav>
+        <a href="index.html" data-page="dashboard">Dashboard</a>
+        <a href="add-item.html" data-page="add-item">Add item</a>
+        <a href="notifications.html" data-page="notifications">Notifications</a>
+        <a href="profile.html" data-page="profile">Profile</a>
+      </nav>
+    </header>
+
+    <main>
+      <h1>Hi Oğulcan, welcome back 👋</h1>
+      <p class="page-subtitle">
+        Track your favourite products, keep an eye on price drops, and share the watchlist
+        with the whole family. Here's what's happened in the last 24 hours.
+      </p>
+
+      <section class="grid grid-3">
+        <article class="card">
+          <h2>Total items</h2>
+          <div class="stat-value" id="stat-total">0</div>
+          <div class="stat-hint">Across Camper, Amazon, IKEA and more.</div>
+        </article>
+        <article class="card">
+          <h2>Actively tracking</h2>
+          <div class="stat-value" id="stat-tracking">0</div>
+          <div class="stat-hint">Items still above their target prices.</div>
+        </article>
+        <article class="card">
+          <h2>Targets hit</h2>
+          <div class="stat-value" id="stat-target-hit">0</div>
+          <div class="stat-hint">Ready for you to check out and celebrate.</div>
+        </article>
+      </section>
+
+      <section class="card" style="margin-top: 32px;">
+        <div class="actions" style="justify-content: space-between; align-items: center;">
+          <div>
+            <h2 style="margin-bottom: 4px;">Watchlist</h2>
+            <p style="margin: 0; color: var(--muted);">
+              Consolidated view for the whole family — sorted by the most recently checked items.
+            </p>
+          </div>
+          <div class="actions">
+            <a class="btn btn-secondary" href="add-item.html">+ Add item</a>
+            <button class="btn btn-ghost" type="button" data-reset-demo>Reset demo data</button>
+          </div>
+        </div>
+
+        <div id="watchlist-empty" class="empty-state" hidden>
+          No items yet — start by adding your first product.
+        </div>
+
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th>Last price</th>
+                <th>Target</th>
+                <th>Status</th>
+                <th>Last checked</th>
+                <th>Added by</th>
+                <th>Frequency</th>
+              </tr>
+            </thead>
+            <tbody id="watchlist-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="grid grid-3" style="margin-top: 32px;">
+        <article class="card">
+          <h2>Next checks</h2>
+          <div id="upcoming-checks" class="timeline"></div>
+        </article>
+        <article class="card">
+          <h2>Latest highlights</h2>
+          <div class="timeline">
+            <div class="timeline-item">
+              <strong>LEGO NASA Artemis Rocket</strong>
+              <span>Target reached yesterday evening 🎉</span>
+              <span>Added by Ayşe • Notifications muted for 24h</span>
+            </div>
+            <div class="timeline-item">
+              <strong>Dyson V15 Detect</strong>
+              <span>Still £30 above target — watchlist updated</span>
+              <span>Suggested by Oğulcan • Auto frequency daily</span>
+            </div>
+          </div>
+        </article>
+        <article class="card">
+          <h2>Family preferences</h2>
+          <div class="timeline">
+            <div class="timeline-item">
+              <strong>Digest emails</strong>
+              <span>Weekdays at 08:00 to ogulcan@example.com</span>
+              <span>Recipients: Mina, Ayşe</span>
+            </div>
+            <div class="timeline-item">
+              <strong>Notification channels</strong>
+              <span>Email + Push enabled, SMS off</span>
+              <span>Try enabling SMS for urgent deals</span>
+            </div>
+          </div>
+        </article>
+      </section>
+    </main>
+
+    <div class="footer">© 2025 PricePulse. Crafted for families hunting the best deals.</div>
+
+    <div class="toast" role="status" aria-live="polite"></div>
+    <script src="assets/js/app.js" defer></script>
+  </body>
+</html>
