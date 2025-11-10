@@ -21,3 +21,21 @@ variable "allowed_cors_origins" {
   default     = ["*"]
   description = "List of origins allowed to access the API Gateway endpoint."
 }
+
+variable "domain_name" {
+  type        = string
+  default     = "price.ogulcanaydogan.com"
+  description = "Domain name for the frontend (e.g., price.ogulcanaydogan.com)"
+}
+
+variable "root_domain_name" {
+  type        = string
+  default     = "ogulcanaydogan.com"
+  description = "Root domain name for Route53 zone lookup (e.g., ogulcanaydogan.com)"
+}
+
+variable "acm_certificate_arn" {
+  type        = string
+  description = "ARN of the ACM certificate for HTTPS. Must be in us-east-1 region for CloudFront."
+  default     = ""
+}

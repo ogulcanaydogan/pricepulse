@@ -1,3 +1,5 @@
+// Demo mode - always enabled for S3 static hosting
+const USE_DEMO_MODE = true;
 const STORAGE_KEY = "pricepulse-demo-state";
 
 const SAMPLE_DATA = {
@@ -74,28 +76,41 @@ const SAMPLE_DATA = {
 };
 
 function getState() {
-  const stored = localStorage.getItem(STORAGE_KEY);
-  if (!stored) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(SAMPLE_DATA));
-    return structuredClone(SAMPLE_DATA);
+  // Demo mode: use localStorage
+  if (USE_DEMO_MODE) {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (!stored) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(SAMPLE_DATA));
+      return structuredClone(SAMPLE_DATA);
+    }
+
+    try {
+      const parsed = JSON.parse(stored);
+      return {
+        items: parsed.items || [],
+        notifications: parsed.notifications || [],
+        preferences: parsed.preferences || structuredClone(SAMPLE_DATA.preferences)
+      };
+    } catch (error) {
+      console.error("Failed to parse saved state", error);
+      localStorage.removeItem(STORAGE_KEY);
+      return structuredClone(SAMPLE_DATA);
+    }
   }
 
-  try {
-    const parsed = JSON.parse(stored);
-    return {
-      items: parsed.items || [],
-      notifications: parsed.notifications || [],
-      preferences: parsed.preferences || structuredClone(SAMPLE_DATA.preferences)
-    };
-  } catch (error) {
-    console.error("Failed to parse saved state", error);
-    localStorage.removeItem(STORAGE_KEY);
-    return structuredClone(SAMPLE_DATA);
-  }
+  // Live mode: return empty state, will be loaded from API
+  return {
+    items: [],
+    notifications: [],
+    preferences: {}
+  };
 }
 
 function saveState(state) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  if (USE_DEMO_MODE) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }
+  // In live mode, state is saved via API calls
 }
 
 function resetDemoData() {
@@ -259,7 +274,7 @@ function handleAddItem(state) {
   const form = document.querySelector("#add-item-form");
   if (!form) return;
 
-  form.addEventListener("submit", (event) => {
+  form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const formData = new FormData(form);
     const newItem = {
@@ -276,10 +291,22 @@ function handleAddItem(state) {
       lastNotification: null
     };
 
-    state.items.unshift(newItem);
-    saveState(state);
-    showToast("Item added to watchlist");
-    form.reset();
+    if (USE_DEMO_MODE) {
+      state.items.unshift(newItem);
+      saveState(state);
+      showToast("Item added to watchlist");
+      form.reset();
+    } else {
+      try {
+        await apiClient.createItem(newItem);
+        showToast("Item added to watchlist");
+        form.reset();
+        // Refresh the page to show new item
+        setTimeout(() => window.location.href = 'index.html', 1000);
+      } catch (error) {
+        showToast("Failed to add item: " + error.message);
+      }
+    }
   });
 
   const quickFill = document.querySelector("#quick-fill");
@@ -352,8 +379,10 @@ function setActiveNav() {
   });
 }
 
-document.addEventListener("DOMContentLoaded", () => {
-  const state = getState();
+document.addEventListener("DOMContentLoaded", async () => {
+  // Demo mode is always enabled
+  let state = getState();
+
   setActiveNav();
   wireResetButtons();
 

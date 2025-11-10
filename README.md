@@ -213,18 +213,77 @@ Auto-triggers on push to `main` branch.
 
 ## 🕐 Deployment
 
-1️⃣ **Terraform**
+### Prerequisites
+
+1. **SSL Certificate**: Request and validate ACM certificate in `us-east-1` region
+   ```bash
+   # See SSL_SETUP.md for detailed instructions
+   aws acm request-certificate \
+     --domain-name price.ogulcanaydogan.com \
+     --validation-method DNS \
+     --region us-east-1
+   ```
+
+2. **Route53 Hosted Zone**: Ensure `ogulcanaydogan.com` is hosted in Route53
+
+3. **Terraform Variables**: Create `infra/terraform.tfvars`
+   ```hcl
+   acm_certificate_arn = "arn:aws:acm:us-east-1:XXX:certificate/XXX"
+   domain_name         = "price.ogulcanaydogan.com"
+   root_domain_name    = "ogulcanaydogan.com"
+   ```
+
+### Deployment Steps
+
+1️⃣ **Deploy Infrastructure**
 ```bash
 cd infra
 terraform init
-terraform apply -auto-approve
+terraform apply
+```
+
+This creates:
+- DynamoDB table
+- Lambda functions (API + Worker)
+- API Gateway
+- Cognito User Pool
+- SNS topic
+- S3 bucket
+- CloudFront distribution
+- Route53 DNS records
+
+2️⃣ **Deploy Frontend**
+```bash
+cd infra
+./deploy-frontend.sh
+```
+
+This will:
+- Upload static files to S3
+- Invalidate CloudFront cache
+- Display website URL
+
+3️⃣ **Test Worker Lambda**
+```bash
 aws lambda invoke \
-  --function-name price-worker \
+  --function-name pricepulse-dev-worker \
   --payload '{}' \
-  output.json
-cd frontend
-npm run build
-aws s3 sync dist/ s3://price.ogulcanaydogan.com/ --delete
+  response.json && cat response.json
+```
+
+4️⃣ **Access Website**
+```
+https://price.ogulcanaydogan.com
+```
+
+### Manual Deployment (Alternative)
+```bash
+# Sync files to S3
+aws s3 sync frontend/ s3://price.ogulcanaydogan.com/ --delete
+
+# Invalidate CloudFront cache
+CLOUDFRONT_ID=$(cd infra && terraform output -raw cloudfront_distribution_id)
+aws cloudfront create-invalidation --distribution-id $CLOUDFRONT_ID --paths "/*"
 ```
 
 | Area | Tool |

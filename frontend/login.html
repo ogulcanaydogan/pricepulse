@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PricePulse · Login</title>
+    <link rel="stylesheet" href="assets/css/styles.css" />
+    <style>
+      .login-container {
+        max-width: 420px;
+        margin: 80px auto;
+        padding: 40px;
+      }
+      .login-header {
+        text-align: center;
+        margin-bottom: 24px;
+      }
+      .login-header p {
+        margin: 8px 0 0;
+        color: var(--muted);
+      }
+      .auth-toggle {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+        margin-bottom: 24px;
+      }
+      .auth-toggle button {
+        padding: 12px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: transparent;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+      }
+      .auth-toggle button.active {
+        background: linear-gradient(120deg, var(--primary), var(--primary-dark));
+        color: #fff;
+        border-color: transparent;
+      }
+      .login-form {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+      .login-form input {
+        padding: 12px;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        font-size: 16px;
+      }
+      .login-form button {
+        padding: 12px;
+        font-size: 16px;
+      }
+      .error-message,
+      .success-message {
+        font-size: 14px;
+        display: none;
+        margin-bottom: 16px;
+        padding: 10px 12px;
+        border-radius: 8px;
+      }
+      .error-message.visible,
+      .success-message.visible {
+        display: block;
+      }
+      .error-message {
+        color: #b12a0b;
+        background: #fde8e2;
+      }
+      .success-message {
+        color: #126b36;
+        background: #e3f6eb;
+      }
+      .helper-text {
+        margin-top: 24px;
+        text-align: center;
+        color: var(--muted);
+      }
+      .hidden {
+        display: none;
+      }
+    </style>
+  </head>
+  <body data-page="login">
+    <header>
+      <div class="brand">
+        <span>£</span>
+        <div>
+          <div style="font-size: 18px;">PricePulse</div>
+          <small style="opacity: 0.8;">Family price tracking hub</small>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <div class="login-container card">
+        <div class="login-header">
+          <h1 id="auth-title">Welcome Back</h1>
+          <p id="auth-subtitle">Sign in to your PricePulse account</p>
+        </div>
+
+        <div class="auth-toggle" role="tablist">
+          <button type="button" class="active" data-switch-to="signin">Sign In</button>
+          <button type="button" data-switch-to="signup">Create Account</button>
+        </div>
+
+        <div class="error-message" id="error-message" role="alert"></div>
+        <div class="success-message" id="success-message" role="status"></div>
+
+        <form class="login-form" id="login-form" autocomplete="on">
+          <div>
+            <label for="username">Username or Email</label>
+            <input type="text" id="username" name="username" required />
+          </div>
+          <div>
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" required />
+          </div>
+          <button type="submit" class="btn btn-primary" data-submit-text="Sign In">Sign In</button>
+        </form>
+
+        <form class="login-form hidden" id="signup-form" autocomplete="on">
+          <div>
+            <label for="signup-username">Username</label>
+            <input type="text" id="signup-username" name="signup-username" required />
+          </div>
+          <div>
+            <label for="signup-email">Email</label>
+            <input type="email" id="signup-email" name="signup-email" required />
+          </div>
+          <div>
+            <label for="signup-password">Password</label>
+            <input type="password" id="signup-password" name="signup-password" required />
+          </div>
+          <div>
+            <label for="signup-confirm">Confirm Password</label>
+            <input type="password" id="signup-confirm" name="signup-confirm" required />
+          </div>
+          <button type="submit" class="btn btn-primary" data-submit-text="Create Account">Create Account</button>
+        </form>
+
+        <p class="helper-text">
+          Prefer to explore first?
+          <a href="index.html" id="demo-mode-link">Continue in Demo Mode</a>
+        </p>
+      </div>
+    </main>
+
+    <div class="footer">© 2025 PricePulse. Secure authentication powered by AWS Cognito.</div>
+
+    <div class="toast" role="status" aria-live="polite"></div>
+
+    <script type="module" src="assets/js/login.js"></script>
+  </body>
+</html>
