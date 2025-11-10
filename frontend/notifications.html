@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PricePulse · Notifications</title>
+    <link rel="stylesheet" href="assets/css/styles.css" />
+  </head>
+  <body data-page="notifications">
+    <header>
+      <div class="brand">
+        <span>£</span>
+        <div>
+          <div style="font-size: 18px;">PricePulse</div>
+          <small style="opacity: 0.8;">Family price tracking hub</small>
+        </div>
+      </div>
+      <nav>
+        <a href="index.html" data-page="dashboard">Dashboard</a>
+        <a href="add-item.html" data-page="add-item">Add item</a>
+        <a href="notifications.html" data-page="notifications">Notifications</a>
+        <a href="profile.html" data-page="profile">Profile</a>
+      </nav>
+    </header>
+
+    <main>
+      <h1>Notification history</h1>
+      <p class="page-subtitle">
+        Every alert we have sent in the last 30 days. Use this feed to understand which
+        products are trending and who received what.
+      </p>
+
+      <section class="card">
+        <div class="actions" style="justify-content: space-between; align-items: center;">
+          <div>
+            <h2 style="margin-bottom: 4px;">All alerts</h2>
+            <p style="margin: 0; color: var(--muted);">Sorted with the newest notification first.</p>
+          </div>
+          <div class="actions">
+            <button class="btn btn-secondary" type="button" data-reset-demo>Reset demo data</button>
+          </div>
+        </div>
+
+        <div id="notifications-empty" class="empty-state" hidden>
+          No notifications yet — once a target price is reached you'll see it here.
+        </div>
+
+        <div id="notification-feed" class="timeline" style="margin-top: 24px;"></div>
+      </section>
+    </main>
+
+    <div class="footer">Tip: Create a Telegram automation with the Jenkins webhook.</div>
+
+    <div class="toast" role="status" aria-live="polite"></div>
+    <script src="assets/js/app.js" defer></script>
+  </body>
+</html>
