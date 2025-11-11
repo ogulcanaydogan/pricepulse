@@ -7,7 +7,25 @@ const USE_DEMO_MODE = CONFIG_USE_DEMO_MODE;
 const STORAGE_KEY = "pricepulse-demo-state";
 const GUEST_ID_KEY = "pricepulse_guest_id";
 
+// SAMPLE_DATA: define preferences (contacts) first so items can reference them safely
 const SAMPLE_DATA = {
+  preferences: {
+    fullName: "Ogulcan Aydogan",
+    email: "ogulcan@example.com",
+    timezone: "Europe/Istanbul",
+    currency: "TRY",
+    theme: "Aurora",
+    digestTime: "08:00",
+    dailyDigest: true,
+    smsAlerts: false,
+    familyTags: true,
+    contacts: [
+      { name: "Ogulcan", email: "ogulcan@example.com", phone: "+905551112233" },
+      { name: "Muge", email: "muge@example.com", phone: "+905551112244" },
+      { name: "Basak", email: "basak@example.com", phone: "+905551112255" },
+      { name: "Guest", email: "guest@example.com", phone: "" }
+    ]
+  },
   items: [
     {
       id: "itm-1",
@@ -20,7 +38,7 @@ const SAMPLE_DATA = {
       lastChecked: "2025-02-23T07:45:00Z",
       status: "Tracking",
       addedBy: "Ogulcan",
-      notificationEmail: SAMPLE_DATA.preferences.contacts[0].email,
+      notificationEmail: "ogulcan@example.com",
       frequency: "Every 12 hours",
       lastNotification: "2025-02-19T20:15:00Z"
     },
@@ -35,7 +53,7 @@ const SAMPLE_DATA = {
       lastChecked: "2025-02-23T09:05:00Z",
       status: "Watching",
       addedBy: "Muge",
-      notificationEmail: SAMPLE_DATA.preferences.contacts[1].email,
+      notificationEmail: "muge@example.com",
       frequency: "Daily",
       lastNotification: null
     },
@@ -50,7 +68,7 @@ const SAMPLE_DATA = {
       lastChecked: "2025-02-22T21:40:00Z",
       status: "Target hit",
       addedBy: "Basak",
-      notificationEmail: SAMPLE_DATA.preferences.contacts[2].email,
+      notificationEmail: "basak@example.com",
       frequency: "Every 6 hours",
       lastNotification: "2025-02-22T21:45:00Z"
     }
@@ -72,24 +90,7 @@ const SAMPLE_DATA = {
       channel: "Push",
       sentAt: "2025-02-19T20:15:00Z"
     }
-  ],
-  preferences: {
-    fullName: "Ogulcan Aydogan",
-    email: "ogulcan@example.com",
-    timezone: "Europe/Istanbul",
-    currency: "TRY",
-    theme: "Aurora",
-    digestTime: "08:00",
-    dailyDigest: true,
-    smsAlerts: false,
-    familyTags: true,
-    contacts: [
-      { name: "Ogulcan", email: "ogulcan@example.com", phone: "+905551112233" },
-      { name: "Muge", email: "muge@example.com", phone: "+905551112244" },
-      { name: "Basak", email: "basak@example.com", phone: "+905551112255" },
-      { name: "Guest", email: "guest@example.com", phone: "" }
-    ]
-  }
+  ]
 };
 
 function resolveItemId(item) {
