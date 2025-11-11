@@ -2,6 +2,18 @@
 import { AWS_CONFIG } from './config.js';
 import authService from './auth.js';
 
+const GUEST_ID_KEY = 'pricepulse_guest_id';
+
+function getGuestId() {
+  let guestId = localStorage.getItem(GUEST_ID_KEY);
+  if (!guestId) {
+    const randomPart = globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : Math.random().toString(36).slice(2, 10);
+    guestId = `guest-${randomPart}`;
+    localStorage.setItem(GUEST_ID_KEY, guestId);
+  }
+  return guestId;
+}
+
 class ApiClient {
   constructor() {
     this.baseUrl = AWS_CONFIG.apiEndpoint;
@@ -10,6 +22,7 @@ class ApiClient {
   // Helper method to make authenticated requests
   async request(endpoint, options = {}) {
     const idToken = authService.getIdToken();
+    const guestId = idToken ? null : getGuestId();
     
     const defaultHeaders = {
       'Content-Type': 'application/json'
@@ -17,6 +30,8 @@ class ApiClient {
 
     if (idToken) {
       defaultHeaders['Authorization'] = `Bearer ${idToken}`;
+    } else if (guestId) {
+      defaultHeaders['X-User-Id'] = guestId;
     }
 
     const config = {

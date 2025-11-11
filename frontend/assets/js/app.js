@@ -1,6 +1,11 @@
-// Demo mode - always enabled for S3 static hosting
-const USE_DEMO_MODE = true;
+import { USE_DEMO_MODE as CONFIG_USE_DEMO_MODE } from "./config.js";
+import apiClient from "./api.js";
+import authService from "./auth.js";
+
+// Demo mode flag is now controlled via config.js
+const USE_DEMO_MODE = CONFIG_USE_DEMO_MODE;
 const STORAGE_KEY = "pricepulse-demo-state";
+const GUEST_ID_KEY = "pricepulse_guest_id";
 
 const SAMPLE_DATA = {
   items: [
@@ -11,9 +16,11 @@ const SAMPLE_DATA = {
       url: "https://www.camper.com/en_WA/women/sandals/product.oruga",
       currentPrice: 128,
       targetPrice: 110,
+      currency: "EUR",
       lastChecked: "2025-02-23T07:45:00Z",
       status: "Tracking",
-      addedBy: "Mina",
+      addedBy: "Ogulcan",
+      notificationEmail: SAMPLE_DATA.preferences.contacts[0].email,
       frequency: "Every 12 hours",
       lastNotification: "2025-02-19T20:15:00Z"
     },
@@ -24,9 +31,11 @@ const SAMPLE_DATA = {
       url: "https://www.amazon.co.uk/dp/B08H93ZRK9",
       currentPrice: 529,
       targetPrice: 499,
+      currency: "GBP",
       lastChecked: "2025-02-23T09:05:00Z",
       status: "Watching",
-      addedBy: "Oğulcan",
+      addedBy: "Muge",
+      notificationEmail: SAMPLE_DATA.preferences.contacts[1].email,
       frequency: "Daily",
       lastNotification: null
     },
@@ -37,9 +46,11 @@ const SAMPLE_DATA = {
       url: "https://www.lego.com/product/artemis-rocket",
       currentPrice: 119,
       targetPrice: 99,
+      currency: "GBP",
       lastChecked: "2025-02-22T21:40:00Z",
       status: "Target hit",
-      addedBy: "Ayşe",
+      addedBy: "Basak",
+      notificationEmail: SAMPLE_DATA.preferences.contacts[2].email,
       frequency: "Every 6 hours",
       lastNotification: "2025-02-22T21:45:00Z"
     }
@@ -63,20 +74,82 @@ const SAMPLE_DATA = {
     }
   ],
   preferences: {
-    fullName: "Oğulcan Aydogan",
+    fullName: "Ogulcan Aydogan",
     email: "ogulcan@example.com",
     timezone: "Europe/Istanbul",
-    currency: "GBP",
+    currency: "TRY",
     theme: "Aurora",
     digestTime: "08:00",
     dailyDigest: true,
     smsAlerts: false,
-    familyTags: true
+    familyTags: true,
+    contacts: [
+      { name: "Ogulcan", email: "ogulcan@example.com", phone: "+905551112233" },
+      { name: "Muge", email: "muge@example.com", phone: "+905551112244" },
+      { name: "Basak", email: "basak@example.com", phone: "+905551112255" },
+      { name: "Guest", email: "guest@example.com", phone: "" }
+    ]
   }
 };
 
-function getState() {
-  // Demo mode: use localStorage
+function resolveItemId(item) {
+  return item?.item_id || item?.id || "";
+}
+
+function minutesToFrequencyLabel(minutes) {
+  if (!minutes) return "Every 12 hours";
+  const map = {
+    360: "Every 6 hours",
+    480: "Every 8 hours",
+    720: "Every 12 hours",
+    1440: "Daily",
+    2880: "Every 2 days"
+  };
+  return map[Number(minutes)] || `${minutes} min`;
+}
+
+function normalizeApiItem(item) {
+  if (!item) return null;
+  let derivedStore = item.store;
+  if (!derivedStore && item.url) {
+    try {
+      derivedStore = new URL(item.url).hostname.replace("www.", "");
+    } catch {
+      derivedStore = "—";
+    }
+  }
+
+  return {
+    id: item.item_id || item.id,
+    name: item.product_name || item.name || "—",
+    store: derivedStore || "—",
+    url: item.url,
+    currentPrice: toNumber(item.last_price ?? item.current_price),
+    targetPrice: toNumber(item.target_price ?? item.targetPrice),
+    lastChecked: item.last_checked || item.lastChecked,
+    status: toTitleCase((item.status || "Tracking").replace("_", " ")),
+    addedBy: item.added_by || item.addedBy || "—",
+    currency: normalizeCurrencyCode(item.currency_code || item.currency),
+    frequency: item.frequency || minutesToFrequencyLabel(item.frequency_minutes),
+    lastNotification: item.last_notification || item.lastNotification,
+    notificationEmail: item.notification_email || null,
+    notificationPhone: item.notification_phone || null
+  };
+}
+
+function normalizeApiNotification(notification) {
+  if (!notification) return null;
+  return {
+    id: notification.id || notification.notification_id,
+    itemId: notification.item_id || notification.itemId,
+    itemName: notification.item_name || notification.itemName,
+    message: notification.message,
+    channel: notification.channel || "Email",
+    sentAt: notification.sent_at || notification.sentAt
+  };
+}
+
+async function loadState() {
   if (USE_DEMO_MODE) {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (!stored) {
@@ -98,12 +171,35 @@ function getState() {
     }
   }
 
-  // Live mode: return empty state, will be loaded from API
-  return {
-    items: [],
-    notifications: [],
-    preferences: {}
-  };
+  try {
+    const [itemsResponse, notificationsResponse] = await Promise.all([
+      apiClient.getItems(),
+      apiClient.getNotifications().catch(() => [])
+    ]);
+
+    const normalizeItems = (payload) => {
+      const collection = Array.isArray(payload) ? payload : payload?.items || [];
+      return collection.map(normalizeApiItem).filter(Boolean);
+    };
+    const normalizeNotifications = (payload) => {
+      const collection = Array.isArray(payload) ? payload : payload?.notifications || [];
+      return collection.map(normalizeApiNotification).filter(Boolean);
+    };
+
+    return {
+      items: normalizeItems(itemsResponse),
+      notifications: normalizeNotifications(notificationsResponse),
+      preferences: structuredClone(SAMPLE_DATA.preferences)
+    };
+  } catch (error) {
+    console.error("Failed to load live data", error);
+    showToast("Unable to load your watchlist right now");
+    return {
+      items: [],
+      notifications: [],
+      preferences: structuredClone(SAMPLE_DATA.preferences)
+    };
+  }
 }
 
 function saveState(state) {
@@ -119,11 +215,33 @@ function resetDemoData() {
   window.location.reload();
 }
 
+function getContacts(state) {
+  return state.preferences?.contacts || SAMPLE_DATA.preferences.contacts;
+}
+
+function getContactByName(state, name) {
+  const contacts = getContacts(state);
+  return contacts.find((contact) => contact.name === name) || contacts.find((contact) => contact.name === "Guest");
+}
+
+function toNumber(value) {
+  if (value === null || value === undefined) return null;
+  const numeric = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function normalizeCurrencyCode(code) {
+  if (!code || typeof code !== "string") return null;
+  return code.trim().toUpperCase();
+}
+
 function formatCurrency(value, currency = "GBP") {
+  const numeric = toNumber(value);
+  if (numeric === null) return "—";
   return new Intl.NumberFormat("en-GB", {
     style: "currency",
     currency
-  }).format(value);
+  }).format(numeric);
 }
 
 function formatRelative(dateString) {
@@ -172,6 +290,7 @@ function renderDashboard(state) {
     tracking: document.querySelector("#stat-tracking"),
     targetHit: document.querySelector("#stat-target-hit")
   };
+  const preferenceCurrency = state.preferences?.currency || "GBP";
 
   if (!tableBody || !stats.total) return;
 
@@ -190,16 +309,26 @@ function renderDashboard(state) {
               <a href="${item.url}" target="_blank" rel="noopener">${item.store}</a>
             </div>
           </td>
-          <td>${formatCurrency(item.currentPrice)}</td>
-          <td>${formatCurrency(item.targetPrice)}</td>
+          <td>${formatCurrency(item.currentPrice, item.currency || preferenceCurrency)}</td>
+          <td>${formatCurrency(item.targetPrice, item.currency || preferenceCurrency)}</td>
           <td>
             <span class="badge ${item.status === "Target hit" ? "success" : item.status === "Tracking" ? "neutral" : "warning"}">
               ${item.status}
             </span>
           </td>
           <td>${formatAbsolute(item.lastChecked)}</td>
-          <td>${item.addedBy}</td>
+          <td>${item.addedBy || "—"}</td>
           <td>${item.frequency}</td>
+          <td>
+            <div style="display:flex; gap:8px;">
+              <button class="btn btn-ghost btn-small" type="button" data-edit-item="${resolveItemId(item)}">
+                Edit
+              </button>
+              <button class="btn btn-ghost btn-small" type="button" data-delete-item="${resolveItemId(item)}">
+                Remove
+              </button>
+            </div>
+          </td>
         </tr>
       `
       )
@@ -268,46 +397,170 @@ function renderProfile(state) {
   form.dailyDigest.checked = prefs.dailyDigest;
   form.smsAlerts.checked = prefs.smsAlerts;
   form.familyTags.checked = prefs.familyTags;
+
+  const container = document.querySelector("#contacts-container");
+  const addButton = document.querySelector("#add-contact");
+  if (container && addButton) {
+    const renderContacts = () => {
+      container.innerHTML = "";
+      (prefs.contacts || []).forEach((contact, index) => {
+        const block = document.createElement("div");
+        block.className = "form-grid contact-row";
+        block.dataset.index = index;
+        block.innerHTML = `
+          <div>
+            <label>Name</label>
+            <input type="text" name="contact-name" value="${contact.name || ""}" required />
+          </div>
+          <div>
+            <label>Email</label>
+            <input type="email" name="contact-email" value="${contact.email || ""}" required />
+          </div>
+          <div>
+            <label>Phone</label>
+            <input type="tel" name="contact-phone" value="${contact.phone || ""}" />
+          </div>
+          <div style="display:flex; align-items:flex-end;">
+            <button type="button" class="btn btn-ghost btn-small" data-remove-contact="${index}">Remove</button>
+          </div>
+        `;
+        container.appendChild(block);
+      });
+    };
+
+    renderContacts();
+
+    addButton.addEventListener("click", () => {
+      prefs.contacts = [
+        ...getContacts({ preferences: prefs }),
+        { name: "", email: "", phone: "" }
+      ];
+      renderContacts();
+    });
+
+    container.addEventListener("click", (event) => {
+      const removeButton = event.target.closest("button[data-remove-contact]");
+      if (!removeButton) return;
+      const index = Number(removeButton.dataset.removeContact);
+      prefs.contacts.splice(index, 1);
+      renderContacts();
+    });
+  }
+
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    state.preferences = {
+      fullName: form.fullName.value,
+      email: form.email.value,
+      timezone: form.timezone.value,
+      currency: form.currency.value,
+      theme: form.theme.value,
+      digestTime: form.digestTime.value,
+      dailyDigest: form.dailyDigest.checked,
+      smsAlerts: form.smsAlerts.checked,
+      familyTags: form.familyTags.checked,
+      contacts: Array.from(document.querySelectorAll("#contacts-container .contact-row")).map((row) => ({
+        name: row.querySelector('input[name="contact-name"]')?.value?.trim() || "",
+        email: row.querySelector('input[name="contact-email"]')?.value?.trim() || "",
+        phone: row.querySelector('input[name="contact-phone"]')?.value?.trim() || ""
+      }))
+    };
+    saveState(state);
+    showToast("Preferences saved");
+  });
 }
 
 function handleAddItem(state) {
   const form = document.querySelector("#add-item-form");
   if (!form) return;
+  const currencySelect = form.querySelector("#currencyCode");
+  if (currencySelect && state.preferences?.currency) {
+    currencySelect.value = state.preferences.currency;
+  }
+
+  const frequencyToMinutes = (label) => {
+    switch (label) {
+      case "Every 6 hours":
+        return 360;
+      case "Every 8 hours":
+        return 480;
+      case "Every 12 hours":
+        return 720;
+      case "Daily":
+        return 1440;
+      case "Every 2 days":
+        return 2880;
+      default:
+        return 720;
+    }
+  };
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const formData = new FormData(form);
+    const editingId = form.dataset.editingId || null;
+    const contact = getContactByName(state, formData.get("addedBy"));
     const newItem = {
-      id: `itm-${Date.now()}`,
+      id: editingId || `itm-${Date.now()}`,
       name: formData.get("name"),
       store: formData.get("store"),
       url: formData.get("url"),
       currentPrice: Number(formData.get("currentPrice")),
       targetPrice: Number(formData.get("targetPrice")),
+      currency: formData.get("currencyCode") || state.preferences?.currency || "TRY",
       lastChecked: new Date().toISOString(),
       status: Number(formData.get("currentPrice")) <= Number(formData.get("targetPrice")) ? "Target hit" : "Tracking",
       addedBy: formData.get("addedBy"),
+      notificationEmail: contact?.email || "",
       frequency: formData.get("frequency"),
       lastNotification: null
     };
 
     if (USE_DEMO_MODE) {
-      state.items.unshift(newItem);
+      if (editingId) {
+        state.items = state.items.map((item) => (resolveItemId(item) === editingId ? { ...newItem } : item));
+        showToast("Item updated");
+      } else {
+        state.items.unshift(newItem);
+        showToast("Item added to watchlist");
+      }
       saveState(state);
-      showToast("Item added to watchlist");
       form.reset();
     } else {
       try {
-        await apiClient.createItem(newItem);
-        showToast("Item added to watchlist");
+        const payload = {
+          url: newItem.url,
+          target_price: newItem.targetPrice,
+          product_name: newItem.name,
+          store: newItem.store,
+          last_price: newItem.currentPrice,
+          status: newItem.status === "Target hit" ? "TARGET_HIT" : "ACTIVE",
+          last_checked: newItem.lastChecked,
+          frequency_minutes: frequencyToMinutes(newItem.frequency),
+          notification_channel: "email",
+          added_by: newItem.addedBy,
+          notification_email: newItem.notificationEmail,
+          currency_code: newItem.currency,
+          notification_phone: contact?.phone || ""
+        };
+        if (editingId) {
+          await apiClient.updateItem(editingId, payload);
+          showToast("Item updated");
+        } else {
+          await apiClient.createItem(payload);
+          showToast("Item added to watchlist");
+        }
         form.reset();
         // Refresh the page to show new item
-        setTimeout(() => window.location.href = 'index.html', 1000);
+        setTimeout(() => window.location.href = 'index.html', 800);
       } catch (error) {
         showToast("Failed to add item: " + error.message);
       }
     }
   });
+
+  attachAutofillHandler(form, state);
+  setupEditMode(form, state);
 
   const quickFill = document.querySelector("#quick-fill");
   if (quickFill) {
@@ -322,6 +575,239 @@ function handleAddItem(state) {
       showToast("Sample data filled");
     });
   }
+}
+
+function formatStoreName(store) {
+  if (!store) return "";
+  return store
+    .split(".")
+    .filter((segment) => segment && segment.toLowerCase() !== "www")
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(" ");
+}
+
+function toTitleCase(value) {
+  if (!value) return "";
+  return value
+    .split(/\s+/)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+function guessDetailsFromUrl(rawUrl) {
+  try {
+    const normalized = rawUrl.startsWith("http") ? rawUrl : `https://${rawUrl}`;
+    const parsed = new URL(normalized);
+    const store = formatStoreName(parsed.hostname);
+    const slug = parsed.pathname.split("/").filter(Boolean).pop() || "";
+    const cleaned = slug
+      .replace(/\.[a-z0-9]+$/i, "")
+      .replace(/[-_]+/g, " ")
+      .trim();
+
+    return {
+      product_name: toTitleCase(cleaned) || store,
+      store,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function attachAutofillHandler(form, state) {
+  const urlInput = form.querySelector("#url");
+  const nameInput = form.querySelector("#name");
+  const storeInput = form.querySelector("#store");
+  const priceInput = form.querySelector("#currentPrice");
+  const currencySelect = form.querySelector("#currencyCode");
+  const detectButton = form.querySelector("#detect-details");
+  const hint = document.querySelector("#detect-hint");
+  if (!urlInput || !detectButton || !nameInput || !storeInput) return;
+
+  let lastProcessedUrl = "";
+  const originalButtonText = detectButton.textContent;
+  const defaultCurrency = state.preferences?.currency || "TRY";
+  if (currencySelect && !form.dataset.editingId) {
+    currencySelect.value = defaultCurrency;
+  }
+
+  const setLoading = (loading) => {
+    if (loading) {
+      detectButton.disabled = true;
+      detectButton.textContent = "Detecting…";
+      if (hint) hint.textContent = "Looking up product details…";
+    } else {
+      detectButton.disabled = false;
+      detectButton.textContent = originalButtonText;
+    }
+  };
+
+  const applyDetails = (details, source = "live") => {
+    if (!details) return;
+    if (details.product_name) {
+      nameInput.value = details.product_name;
+    }
+    if (details.store) {
+      storeInput.value = details.store;
+    }
+    if (priceInput && details.current_price !== undefined && details.current_price !== null) {
+      const numeric = Number(details.current_price);
+      if (!Number.isNaN(numeric)) {
+        priceInput.value = numeric;
+      }
+    }
+    if (currencySelect && details.currency_code) {
+      currencySelect.value = details.currency_code;
+    }
+    if (hint) {
+      hint.textContent =
+        source === "guess"
+          ? "Used the link to make our best guess."
+          : "Details detected automatically.";
+    }
+  };
+
+  const detect = async (auto = false) => {
+    const url = urlInput.value.trim();
+    if (!url) {
+      if (!auto) showToast("Enter a product URL first");
+      return;
+    }
+    if (auto && url === lastProcessedUrl) {
+      return;
+    }
+    lastProcessedUrl = url;
+    setLoading(true);
+
+    try {
+      if (USE_DEMO_MODE) {
+        const guess = guessDetailsFromUrl(url);
+        if (guess) {
+          applyDetails(guess, "guess");
+          showToast("Filled details based on the link");
+        }
+        return;
+      }
+
+      const details = await apiClient.testExtract(url);
+      if (details && (details.product_name || details.current_price)) {
+        applyDetails(
+          {
+            product_name: details.product_name,
+            store: formatStoreName(details.store),
+            current_price: details.current_price,
+            currency_code: details.currency_code
+          },
+          "live"
+        );
+        showToast("Product details detected");
+      } else {
+        const guess = guessDetailsFromUrl(url);
+        if (guess) {
+          applyDetails(guess, "guess");
+          showToast("Used best guess from the link");
+        }
+      }
+    } catch (error) {
+      console.error("Unable to detect product details", error);
+      const fallback = guessDetailsFromUrl(url);
+      if (fallback) {
+        applyDetails(fallback, "guess");
+        // Provide explicit UI feedback when auto-detect fails but we used a best-guess
+        if (hint) {
+          hint.textContent = "Automatic detection failed — used best guess from the link.";
+          hint.classList.remove("info");
+          hint.classList.add("warning");
+          // Clear the hint after a short delay so the UI doesn't remain in warning state
+          clearDetectHintAfterTimeout(hint);
+        }
+        showToast("Auto-detect failed; used best guess from link");
+      } else if (!auto) {
+        // No fallback available — make the user aware and prompt manual input
+        if (hint) {
+          hint.textContent = "Automatic detection failed — please enter product details manually.";
+          hint.classList.remove("info");
+          hint.classList.add("error");
+          // Clear the hint after a short delay so the UI doesn't remain in error state
+          clearDetectHintAfterTimeout(hint);
+        }
+        showToast("Could not detect product details");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  detectButton.addEventListener("click", () => detect(false));
+  urlInput.addEventListener("change", () => detect(true));
+}
+
+async function setupEditMode(form, state) {
+  const params = new URLSearchParams(window.location.search);
+  const editId = params.get("edit");
+  if (!editId) return;
+
+  form.dataset.editingId = editId;
+  const cached = sessionStorage.getItem("pricepulse-edit-item");
+  if (cached) {
+    try {
+      populateFormFromItem(form, JSON.parse(cached));
+    } catch (error) {
+      console.debug("Invalid cached item payload", error);
+    } finally {
+      sessionStorage.removeItem("pricepulse-edit-item");
+    }
+  }
+
+  const loadItem = async () => {
+    let item = state.items.find((entry) => resolveItemId(entry) === editId);
+    if (!item && !USE_DEMO_MODE) {
+      try {
+        const apiItem = await apiClient.getItem(editId);
+        item = normalizeApiItem(apiItem);
+      } catch (error) {
+        console.error("Failed to fetch item for editing", error);
+        showToast("Unable to load item details");
+      }
+    }
+    if (!item) return;
+    populateFormFromItem(form, item);
+    const heading = document.querySelector("main h1");
+    if (heading) heading.textContent = "Edit product";
+    const submitBtn = form.querySelector('button[type="submit"]');
+    if (submitBtn) submitBtn.textContent = "Save changes";
+    const hint = document.querySelector("#detect-hint");
+    if (hint) hint.textContent = "Editing existing item — update details below.";
+  };
+
+  await loadItem();
+}
+
+function populateFormFromItem(form, item) {
+  if (!item) return;
+  form.name.value = item.name || "";
+  form.store.value = item.store || "";
+  form.url.value = item.url || "";
+  form.currentPrice.value = toNumber(item.currentPrice) ?? "";
+  form.targetPrice.value = toNumber(item.targetPrice) ?? "";
+  if (form.currencyCode && (item.currency || form.currencyCode.value)) {
+    form.currencyCode.value = item.currency || form.currencyCode.value;
+  }
+  if (form.frequency && item.frequency) {
+    form.frequency.value = item.frequency;
+  }
+  if (form.addedBy && item.addedBy) {
+    form.addedBy.value = item.addedBy;
+  }
+}
+
+// Auto-clear hint classes after a short timeout so the UI doesn't remain in error state
+function clearDetectHintAfterTimeout(hint, timeout = 6000) {
+  if (!hint) return;
+  setTimeout(() => {
+    hint.textContent = "";
+    hint.classList.remove("warning", "error");
+  }, timeout);
 }
 
 function handleProfile(state) {
@@ -349,6 +835,7 @@ function handleProfile(state) {
 function renderAddItemHints(state) {
   const list = document.querySelector("#recent-items");
   if (!list) return;
+  const currency = state.preferences?.currency || "GBP";
   list.innerHTML = state.items
     .slice(0, 3)
     .map(
@@ -356,16 +843,73 @@ function renderAddItemHints(state) {
       <div class="timeline-item">
         <strong>${item.name}</strong>
         <span>Last seen ${formatRelative(item.lastChecked)}</span>
-        <span>Current • ${formatCurrency(item.currentPrice)}</span>
+        <span>Current • ${formatCurrency(item.currentPrice, item.currency || currency)}</span>
       </div>
     `
     )
     .join("");
 }
 
+function attachDashboardActions(state) {
+  const tableBody = document.querySelector("#watchlist-body");
+  if (!tableBody) return;
+
+  tableBody.addEventListener("click", async (event) => {
+    const deleteButton = event.target.closest("button[data-delete-item]");
+    if (deleteButton) {
+      const itemId = deleteButton.dataset.deleteItem;
+      if (!itemId) return;
+
+      deleteButton.disabled = true;
+      deleteButton.textContent = "Removing…";
+
+      const removeFromState = () => {
+        state.items = state.items.filter((item) => resolveItemId(item) !== itemId);
+        renderDashboard(state);
+      };
+
+      try {
+        if (USE_DEMO_MODE) {
+          removeFromState();
+          saveState(state);
+          showToast("Item removed");
+        } else {
+          await apiClient.deleteItem(itemId);
+          removeFromState();
+          showToast("Item removed");
+        }
+      } catch (error) {
+        console.error("Failed to delete item", error);
+        showToast("Unable to remove item right now");
+        deleteButton.disabled = false;
+        deleteButton.textContent = "Remove";
+      }
+      return;
+    }
+
+    const editButton = event.target.closest("button[data-edit-item]");
+    if (editButton) {
+      const itemId = editButton.dataset.editItem;
+      if (!itemId) return;
+      const item = state.items.find((entry) => resolveItemId(entry) === itemId);
+      if (!item) {
+        showToast("Could not find item to edit");
+        return;
+      }
+      sessionStorage.setItem("pricepulse-edit-item", JSON.stringify(item));
+      window.location.href = `add-item.html?edit=${encodeURIComponent(itemId)}`;
+    }
+  });
+}
+
 function wireResetButtons() {
-  document.querySelectorAll("[data-reset-demo]").forEach((button) => {
-    button.addEventListener("click", resetDemoData);
+  const buttons = document.querySelectorAll("[data-reset-demo]");
+  buttons.forEach((button) => {
+    if (USE_DEMO_MODE) {
+      button.addEventListener("click", resetDemoData);
+    } else {
+      button.hidden = true;
+    }
   });
 }
 
@@ -379,9 +923,37 @@ function setActiveNav() {
   });
 }
 
+function ensureGuestIdentity() {
+  let guestId = localStorage.getItem(GUEST_ID_KEY);
+  if (!guestId) {
+    const randomPart = globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : Math.random().toString(36).slice(2, 10);
+    guestId = `guest-${randomPart}`;
+    localStorage.setItem(GUEST_ID_KEY, guestId);
+  }
+  return guestId;
+}
+
+async function guardProtectedPage() {
+  try {
+    await authService.init();
+  } catch (error) {
+    console.debug("Auth init error", error);
+  }
+
+  if (!USE_DEMO_MODE) {
+    if (!authService.isAuthenticated()) {
+      ensureGuestIdentity();
+    }
+  }
+
+  return true;
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
-  // Demo mode is always enabled
-  let state = getState();
+  const allowed = await guardProtectedPage();
+  if (!allowed) return;
+
+  const state = await loadState();
 
   setActiveNav();
   wireResetButtons();
@@ -389,6 +961,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   switch (document.body.dataset.page) {
     case "dashboard":
       renderDashboard(state);
+      attachDashboardActions(state);
       break;
     case "add-item":
       renderAddItemHints(state);

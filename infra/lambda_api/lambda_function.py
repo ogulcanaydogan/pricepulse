@@ -12,10 +12,14 @@ import base64
 import json
 import logging
 import os
+import re
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
+from urllib.request import Request, urlopen
 
 import boto3
 from boto3.dynamodb.conditions import Attr, Key
@@ -27,6 +31,18 @@ dynamodb = boto3.resource("dynamodb")
 table = dynamodb.Table(os.environ["TABLE_NAME"])
 sns_client = boto3.client("sns")
 SNS_TOPIC = os.environ.get("SNS_TOPIC")
+CORS_HEADERS = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Authorization,Content-Type,X-User-Id",
+    "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
+}
+CURRENCY_SYMBOL_MAP = {
+    "£": "GBP",
+    "€": "EUR",
+    "$": "USD",
+    "₺": "TRY",
+    "₽": "RUB",
+}
 
 
 def _decimal_default(value: Any) -> Any:
@@ -40,7 +56,7 @@ def _response(status_code: int, body: Any) -> Dict[str, Any]:
         "statusCode": status_code,
         "headers": {
             "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
+            **CORS_HEADERS,
         },
         "body": json.dumps(body, default=_decimal_default),
     }
@@ -71,22 +87,23 @@ def _parse_body(event: Dict[str, Any]) -> Dict[str, Any]:
 def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     LOGGER.info("Received event: %s", json.dumps(event))
 
-    user_id = _get_user_id(event)
-    if not user_id:
-        return _response(401, {"message": "Unauthorized"})
-
     http_method = event.get("requestContext", {}).get("http", {}).get("method", "GET")
-    route_key = event.get("requestContext", {}).get("routeKey") or f"{http_method} {event.get('rawPath', '/') }"
 
     if http_method == "OPTIONS":
         return {
             "statusCode": 204,
-            "headers": {
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Headers": "Authorization,Content-Type",
-                "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-            },
+            "headers": CORS_HEADERS,
         }
+
+    user_id = _get_user_id(event)
+    if not user_id:
+        return _response(401, {"message": "Unauthorized"})
+
+    route_key = event.get("requestContext", {}).get("routeKey") or f"{http_method} {event.get('rawPath', '/') }"
+
+    if route_key == "POST /test-extract":
+        body = _parse_body(event)
+        return _test_extract(body)
 
     if http_method == "GET" and route_key.startswith("GET /items/"):
         item_id = event.get("pathParameters", {}).get("item_id")
@@ -148,9 +165,125 @@ def _create_item(user_id: str, body: Dict[str, Any]) -> Dict[str, Any]:
 
     if body.get("last_price") is not None:
         item["last_price"] = Decimal(str(body["last_price"]))
+    if body.get("added_by"):
+        item["added_by"] = body["added_by"]
+    if body.get("notification_email"):
+        item["notification_email"] = body["notification_email"]
+    if body.get("currency_code"):
+        item["currency_code"] = body["currency_code"]
 
     table.put_item(Item=item)
     return _response(201, item)
+
+
+def _test_extract(body: Dict[str, Any]) -> Dict[str, Any]:
+    url = (body.get("url") or "").strip()
+    if not url:
+        return _response(400, {"message": "url is required"})
+
+    normalized_url = _normalize_url(url)
+
+    try:
+        metadata = _fetch_url_metadata(normalized_url)
+        return _response(200, metadata)
+    except Exception as error:  # pylint: disable=broad-except
+        LOGGER.exception("Failed to extract metadata for %s", normalized_url)
+        return _response(502, {"message": "Unable to detect product details", "detail": str(error)})
+
+
+def _normalize_url(url: str) -> str:
+    parsed = urlparse(url)
+    if not parsed.scheme:
+        parsed = urlparse(f"https://{url}")
+    return parsed.geturl()
+
+
+def _fetch_url_metadata(url: str) -> Dict[str, Any]:
+    parsed = urlparse(url)
+    store = (parsed.netloc or "").replace("www.", "")
+
+    html = _download_html(url)
+
+    title = (
+        _extract_meta_content(html, "og:title")
+        or _extract_meta_content(html, "twitter:title")
+        or _extract_title(html)
+        or store
+    )
+
+    price, currency_code = _extract_price(html)
+
+    return {
+        "store": store or parsed.netloc,
+        "product_name": title.strip()[:256] if title else store,
+        "current_price": price,
+        "currency_code": currency_code,
+    }
+
+
+def _download_html(url: str) -> str:
+    # Simple retry wrapper to tolerate transient remote errors (5xx, timeouts)
+    request = Request(url, headers={"User-Agent": "Mozilla/5.0 (compatible; PricePulseBot/1.0)"})
+    retries = 3
+    delay_seconds = 1
+    last_error = None
+    for attempt in range(1, retries + 1):
+        try:
+            with urlopen(request, timeout=10) as response:  # nosec B310
+                charset = response.headers.get_content_charset() or "utf-8"
+                return response.read().decode(charset, errors="ignore")
+        except HTTPError as http_err:
+            # For 4xx errors, don't retry; surface the error immediately
+            status = getattr(http_err, 'code', None)
+            last_error = http_err
+            if status and 400 <= status < 500:
+                LOGGER.warning("HTTP Error %s fetching %s (not retrying)", status, url)
+                raise
+            LOGGER.warning("Transient HTTP error fetching %s (attempt %s/%s): %s", url, attempt, retries, http_err)
+        except URLError as url_err:
+            last_error = url_err
+            LOGGER.warning("URL error fetching %s (attempt %s/%s): %s", url, attempt, retries, url_err)
+
+        # Backoff before retrying
+        if attempt < retries:
+            import time
+
+            time.sleep(delay_seconds * attempt)
+
+    # If we reach here, all retries failed
+    LOGGER.error("Failed to download HTML for %s after %s attempts", url, retries)
+    raise last_error or Exception("Failed to download HTML")
+
+
+def _extract_meta_content(html: str, property_name: str) -> Optional[str]:
+    pattern = re.compile(
+        rf'<meta[^>]+(?:property|name)\s*=\s*["\']{re.escape(property_name)}["\'][^>]+content\s*=\s*["\'](.*?)["\']',
+        re.IGNORECASE | re.DOTALL,
+    )
+    match = pattern.search(html)
+    if match:
+        return match.group(1)
+    return None
+
+
+def _extract_title(html: str) -> Optional[str]:
+    match = re.search(r"<title>(.*?)</title>", html, re.IGNORECASE | re.DOTALL)
+    if match:
+        return re.sub(r"\s+", " ", match.group(1)).strip()
+    return None
+
+
+def _extract_price(html: str) -> Tuple[Optional[float], Optional[str]]:
+    price_pattern = re.compile(r"(£|€|\$|₺|₽)\s?([0-9]+(?:[.,][0-9]{1,2})?)", re.IGNORECASE)
+    match = price_pattern.search(html)
+    if not match:
+        return None, None
+    symbol = match.group(1)
+    value = match.group(2).replace(",", ".")
+    try:
+        return float(value), CURRENCY_SYMBOL_MAP.get(symbol)
+    except ValueError:
+        return None, CURRENCY_SYMBOL_MAP.get(symbol)
 
 
 def _update_item(user_id: str, item_id: Optional[str], body: Dict[str, Any]) -> Dict[str, Any]:

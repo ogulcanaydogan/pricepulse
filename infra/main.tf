@@ -211,6 +211,12 @@ data "archive_file" "lambda_worker" {
   output_path = "${path.module}/dist/lambda_worker.zip"
 }
 
+data "archive_file" "lambda_auth" {
+  type        = "zip"
+  source_dir  = "${path.module}/lambda_auth"
+  output_path = "${path.module}/dist/lambda_auth.zip"
+}
+
 resource "aws_lambda_function" "api" {
   function_name = "${local.name_prefix}-api"
   role          = aws_iam_role.lambda_api.arn
@@ -244,6 +250,67 @@ resource "aws_lambda_function" "worker" {
   }
 }
 
+resource "aws_iam_role" "lambda_auth" {
+  name = "${local.name_prefix}-auth-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "lambda.amazonaws.com"
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "lambda_auth" {
+  name = "${local.name_prefix}-auth-policy"
+  role = aws_iam_role.lambda_auth.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "cognito-idp:SignUp",
+          "cognito-idp:AdminConfirmSignUp",
+          "cognito-idp:InitiateAuth"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Resource = "arn:aws:logs:*:*:*"
+      }
+    ]
+  })
+}
+
+resource "aws_lambda_function" "auth" {
+  function_name = "${local.name_prefix}-auth"
+  role          = aws_iam_role.lambda_auth.arn
+  handler       = "lambda_function.handler"
+  runtime       = "python3.11"
+  filename      = data.archive_file.lambda_auth.output_path
+  source_code_hash = data.archive_file.lambda_auth.output_base64sha256
+
+  environment {
+    variables = {
+      USER_POOL_ID        = aws_cognito_user_pool.main.id
+      USER_POOL_CLIENT_ID = aws_cognito_user_pool_client.web.id
+      AUTO_CONFIRM_SIGNUP = var.auto_confirm_signup ? "true" : "false"
+    }
+  }
+}
+
 resource "aws_cloudwatch_event_rule" "worker_schedule" {
   name                = "${local.name_prefix}-schedule"
   schedule_expression = "cron(0 9,21 * * ? *)"
@@ -272,7 +339,7 @@ resource "aws_apigatewayv2_api" "http" {
       ["https://${var.domain_name}"]
     )
     allow_methods = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
-    allow_headers = ["Authorization", "Content-Type"]
+    allow_headers = ["Authorization", "Content-Type", "X-User-Id"]
   }
 }
 
@@ -284,10 +351,25 @@ resource "aws_lambda_permission" "apigw" {
   source_arn    = "${aws_apigatewayv2_api.http.execution_arn}/*/*"
 }
 
+resource "aws_lambda_permission" "auth_apigw" {
+  statement_id  = "AllowAPIGatewayInvokeAuth"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.auth.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.http.execution_arn}/*/*"
+}
+
 resource "aws_apigatewayv2_integration" "lambda" {
   api_id                 = aws_apigatewayv2_api.http.id
   integration_type       = "AWS_PROXY"
   integration_uri        = aws_lambda_function.api.invoke_arn
+  payload_format_version = "2.0"
+}
+
+resource "aws_apigatewayv2_integration" "auth" {
+  api_id                 = aws_apigatewayv2_api.http.id
+  integration_type       = "AWS_PROXY"
+  integration_uri        = aws_lambda_function.auth.invoke_arn
   payload_format_version = "2.0"
 }
 
@@ -301,6 +383,24 @@ resource "aws_apigatewayv2_route" "collection" {
   api_id    = aws_apigatewayv2_api.http.id
   route_key = "ANY /items"
   target    = "integrations/${aws_apigatewayv2_integration.lambda.id}"
+}
+
+resource "aws_apigatewayv2_route" "test_extract" {
+  api_id    = aws_apigatewayv2_api.http.id
+  route_key = "POST /test-extract"
+  target    = "integrations/${aws_apigatewayv2_integration.lambda.id}"
+}
+
+resource "aws_apigatewayv2_route" "auth_signup" {
+  api_id    = aws_apigatewayv2_api.http.id
+  route_key = "POST /auth/signup"
+  target    = "integrations/${aws_apigatewayv2_integration.auth.id}"
+}
+
+resource "aws_apigatewayv2_route" "auth_signin" {
+  api_id    = aws_apigatewayv2_api.http.id
+  route_key = "POST /auth/signin"
+  target    = "integrations/${aws_apigatewayv2_integration.auth.id}"
 }
 
 resource "aws_apigatewayv2_stage" "default" {

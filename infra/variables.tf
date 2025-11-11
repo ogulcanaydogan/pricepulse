@@ -39,3 +39,9 @@ variable "acm_certificate_arn" {
   description = "ARN of the ACM certificate for HTTPS. Must be in us-east-1 region for CloudFront."
   default     = ""
 }
+
+variable "auto_confirm_signup" {
+  type        = bool
+  default     = true
+  description = "Whether the auth Lambda should automatically confirm new Cognito signups."
+}
