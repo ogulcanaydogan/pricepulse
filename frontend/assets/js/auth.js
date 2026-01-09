@@ -1,6 +1,34 @@
 // Authentication Module - AWS Cognito Integration
 import { AWS_CONFIG } from './config.js';
 
+// Helper to decode JWT payload (without verification - just for reading claims)
+function decodeJwtPayload(token) {
+  try {
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    return JSON.parse(jsonPayload);
+  } catch {
+    return null;
+  }
+}
+
+// Check if JWT token is expired (with 60 second buffer)
+function isTokenExpired(token) {
+  if (!token) return true;
+  const payload = decodeJwtPayload(token);
+  if (!payload || !payload.exp) return true;
+  // exp is in seconds, Date.now() is in milliseconds
+  const expiryTime = payload.exp * 1000;
+  const bufferMs = 60 * 1000; // 60 second buffer
+  return Date.now() >= expiryTime - bufferMs;
+}
+
 class AuthService {
   constructor() {
     this.currentUser = null;
@@ -95,6 +123,12 @@ class AuthService {
     const username = localStorage.getItem('pricepulse_username');
 
     if (idToken && accessToken && username) {
+      // Check if token is expired
+      if (isTokenExpired(idToken)) {
+        console.log('Session expired, clearing tokens');
+        await this.signOut();
+        return null;
+      }
       return {
         username,
         idToken,
@@ -105,9 +139,11 @@ class AuthService {
     return null;
   }
 
-  // Check if user is authenticated
+  // Check if user is authenticated (with expiry check)
   isAuthenticated() {
-    return !!this.idToken;
+    const token = this.idToken || localStorage.getItem('pricepulse_idToken');
+    if (!token) return false;
+    return !isTokenExpired(token);
   }
 
   // Get current user

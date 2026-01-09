@@ -100,12 +100,24 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         return _response(401, {"message": "Unauthorized"})
 
     route_key = event.get("requestContext", {}).get("routeKey") or f"{http_method} {event.get('rawPath', '/') }"
+    raw_path = event.get("rawPath", "")
 
     if route_key == "POST /test-extract":
         body = _parse_body(event)
         return _test_extract(body)
 
-    if http_method == "GET" and route_key.startswith("GET /items/"):
+    # Notifications endpoints
+    if http_method == "GET" and "/notifications" in raw_path:
+        return _list_notifications(user_id)
+    if http_method == "PUT" and "/notifications/" in raw_path and "/read" in raw_path:
+        notification_id = event.get("pathParameters", {}).get("notification_id")
+        return _mark_notification_read(user_id, notification_id)
+
+    # Items endpoints
+    if http_method == "POST" and "/items/" in raw_path and "/check" in raw_path:
+        item_id = event.get("pathParameters", {}).get("item_id")
+        return _check_item_price(user_id, item_id)
+    if http_method == "GET" and "/items/" in raw_path:
         item_id = event.get("pathParameters", {}).get("item_id")
         return _get_item(user_id, item_id)
     if http_method == "GET":
@@ -274,16 +286,155 @@ def _extract_title(html: str) -> Optional[str]:
 
 
 def _extract_price(html: str) -> Tuple[Optional[float], Optional[str]]:
-    price_pattern = re.compile(r"(£|€|\$|₺|₽)\s?([0-9]+(?:[.,][0-9]{1,2})?)", re.IGNORECASE)
-    match = price_pattern.search(html)
-    if not match:
+    """Extract price from HTML using multiple strategies in order of reliability."""
+
+    # Strategy 1: JSON-LD structured data (most reliable)
+    jsonld_price, jsonld_currency = _extract_price_from_jsonld(html)
+    if jsonld_price is not None:
+        return jsonld_price, jsonld_currency
+
+    # Strategy 2: Open Graph price meta tags
+    og_price = _extract_meta_content(html, "og:price:amount") or _extract_meta_content(html, "product:price:amount")
+    og_currency = _extract_meta_content(html, "og:price:currency") or _extract_meta_content(html, "product:price:currency")
+    if og_price:
+        try:
+            price_val = float(og_price.replace(",", ".").replace(" ", ""))
+            currency_code = og_currency.upper() if og_currency else None
+            return price_val, currency_code
+        except ValueError:
+            pass
+
+    # Strategy 3: Look for prices in elements with price-related classes/attributes
+    price_element_pattern = re.compile(
+        r'(?:class|id|itemprop)\s*=\s*["\'][^"\']*(?:price|amount|cost)[^"\']*["\'][^>]*>([^<]*(?:£|€|\$|₺|₽)[^<]*)<',
+        re.IGNORECASE
+    )
+    for match in price_element_pattern.finditer(html):
+        price, currency = _parse_price_string(match.group(1))
+        if price is not None:
+            return price, currency
+
+    # Strategy 4: Regex fallback - improved pattern with thousands separator support
+    # Matches: £1,299.99, €1.299,99, $1299, ₺15.000, etc.
+    price_pattern = re.compile(
+        r"(£|€|\$|₺|₽)\s?([0-9]{1,3}(?:[.,][0-9]{3})*(?:[.,][0-9]{1,2})?|[0-9]+(?:[.,][0-9]{1,2})?)",
+        re.IGNORECASE
+    )
+
+    # Collect all price matches and prefer ones that look like product prices
+    matches = list(price_pattern.finditer(html))
+    if not matches:
         return None, None
+
+    # Try to find a "main" price by looking at context
+    for match in matches:
+        # Skip if this looks like a shipping/delivery price
+        context_start = max(0, match.start() - 100)
+        context = html[context_start:match.start()].lower()
+        if any(skip in context for skip in ['shipping', 'delivery', 'postage', 'kargo', 'was ', 'old', 'rrp', 'original']):
+            continue
+
+        price, currency = _parse_price_from_match(match)
+        if price is not None and price > 0:
+            return price, currency
+
+    # If no good match found, use the first one
+    if matches:
+        return _parse_price_from_match(matches[0])
+
+    return None, None
+
+
+def _extract_price_from_jsonld(html: str) -> Tuple[Optional[float], Optional[str]]:
+    """Extract price from JSON-LD structured data."""
+    jsonld_pattern = re.compile(r'<script[^>]+type\s*=\s*["\']application/ld\+json["\'][^>]*>(.*?)</script>', re.IGNORECASE | re.DOTALL)
+
+    for match in jsonld_pattern.finditer(html):
+        try:
+            data = json.loads(match.group(1))
+            # Handle both single objects and arrays
+            items = [data] if isinstance(data, dict) else data if isinstance(data, list) else []
+
+            for item in items:
+                # Look for Product schema
+                if item.get("@type") == "Product" or "Product" in str(item.get("@type", "")):
+                    offers = item.get("offers", {})
+                    if isinstance(offers, list):
+                        offers = offers[0] if offers else {}
+
+                    price = offers.get("price") or offers.get("lowPrice")
+                    currency = offers.get("priceCurrency")
+
+                    if price is not None:
+                        try:
+                            return float(price), currency
+                        except (ValueError, TypeError):
+                            pass
+        except (json.JSONDecodeError, TypeError, KeyError):
+            continue
+
+    return None, None
+
+
+def _parse_price_string(text: str) -> Tuple[Optional[float], Optional[str]]:
+    """Parse a price from a text string like '£1,299.99' or '€ 1.299,99'."""
+    if not text:
+        return None, None
+
+    # Find currency symbol
+    currency = None
+    for symbol, code in CURRENCY_SYMBOL_MAP.items():
+        if symbol in text:
+            currency = code
+            break
+
+    # Extract numeric part
+    # Remove currency symbols and whitespace, then parse
+    numeric_text = re.sub(r'[^\d.,]', '', text)
+    if not numeric_text:
+        return None, currency
+
+    return _normalize_price_value(numeric_text), currency
+
+
+def _parse_price_from_match(match: re.Match) -> Tuple[Optional[float], Optional[str]]:
+    """Parse price from regex match."""
     symbol = match.group(1)
-    value = match.group(2).replace(",", ".")
+    value_str = match.group(2)
+    currency = CURRENCY_SYMBOL_MAP.get(symbol)
+    price = _normalize_price_value(value_str)
+    return price, currency
+
+
+def _normalize_price_value(value_str: str) -> Optional[float]:
+    """Normalize a price string to float, handling different decimal/thousands separators."""
+    if not value_str:
+        return None
+
+    # Remove spaces
+    value_str = value_str.replace(" ", "")
+
+    # Determine decimal separator based on format
+    # If last separator is followed by exactly 2 digits, it's likely decimal
+    # e.g., "1,299.99" -> decimal is ".", "1.299,99" -> decimal is ","
+
+    comma_pos = value_str.rfind(",")
+    dot_pos = value_str.rfind(".")
+
+    if comma_pos > dot_pos:
+        # Comma is last, likely European format (1.234,56)
+        value_str = value_str.replace(".", "").replace(",", ".")
+    elif dot_pos > comma_pos:
+        # Dot is last, likely US/UK format (1,234.56)
+        value_str = value_str.replace(",", "")
+    else:
+        # Only one or no separator - remove commas (could be thousands)
+        value_str = value_str.replace(",", "")
+
     try:
-        return float(value), CURRENCY_SYMBOL_MAP.get(symbol)
+        return float(value_str)
     except ValueError:
-        return None, CURRENCY_SYMBOL_MAP.get(symbol)
+        return None
 
 
 def _update_item(user_id: str, item_id: Optional[str], body: Dict[str, Any]) -> Dict[str, Any]:
@@ -348,3 +499,119 @@ def _delete_item(user_id: str, item_id: Optional[str]) -> Dict[str, Any]:
     except table.meta.client.exceptions.ConditionalCheckFailedException:  # type: ignore[attr-defined]
         return _response(404, {"message": "Item not found"})
     return _response(204, {"message": "Item deleted"})
+
+
+def _list_notifications(user_id: str) -> Dict[str, Any]:
+    """Return notifications derived from items that have hit their target price."""
+    response = table.query(
+        KeyConditionExpression=Key("user_id").eq(user_id),
+        FilterExpression=Attr("status").eq("TARGET_HIT"),
+    )
+    items = response.get("Items", [])
+
+    notifications = []
+    for item in items:
+        last_checked = item.get("last_checked") or item.get("created_at")
+        notifications.append({
+            "id": f"ntf-{item.get('item_id')}",
+            "item_id": item.get("item_id"),
+            "item_name": item.get("product_name", "Unknown Product"),
+            "message": f"Price dropped to {item.get('currency_code', '')} {item.get('last_price', 'N/A')} (target {item.get('currency_code', '')} {item.get('target_price', 'N/A')}).",
+            "channel": item.get("notification_channel", "email"),
+            "sent_at": last_checked,
+            "read": item.get("notification_read", False),
+        })
+
+    notifications.sort(key=lambda x: x.get("sent_at") or "", reverse=True)
+    return _response(200, notifications)
+
+
+def _mark_notification_read(user_id: str, notification_id: Optional[str]) -> Dict[str, Any]:
+    """Mark a notification as read by updating the corresponding item."""
+    if not notification_id:
+        return _response(400, {"message": "notification_id is required"})
+
+    # Extract item_id from notification_id (format: ntf-{item_id})
+    item_id = notification_id.replace("ntf-", "") if notification_id.startswith("ntf-") else notification_id
+
+    try:
+        response = table.update_item(
+            Key={"user_id": user_id, "item_id": item_id},
+            UpdateExpression="SET notification_read = :val",
+            ExpressionAttributeValues={":val": True},
+            ConditionExpression=Attr("item_id").exists(),
+            ReturnValues="ALL_NEW",
+        )
+    except table.meta.client.exceptions.ConditionalCheckFailedException:  # type: ignore[attr-defined]
+        return _response(404, {"message": "Notification not found"})
+
+    return _response(200, {"message": "Notification marked as read"})
+
+
+def _check_item_price(user_id: str, item_id: Optional[str]) -> Dict[str, Any]:
+    """Manually trigger a price check for a specific item."""
+    if not item_id:
+        return _response(400, {"message": "item_id is required"})
+
+    # Get the item first
+    response = table.get_item(Key={"user_id": user_id, "item_id": item_id})
+    item = response.get("Item")
+    if not item:
+        return _response(404, {"message": "Item not found"})
+
+    url = item.get("url")
+    if not url:
+        return _response(400, {"message": "Item has no URL to check"})
+
+    try:
+        # Fetch current price
+        metadata = _fetch_url_metadata(url)
+        new_price = metadata.get("current_price")
+
+        if new_price is None:
+            return _response(502, {"message": "Could not extract price from URL"})
+
+        now = datetime.now(timezone.utc).isoformat()
+        target_price = float(item.get("target_price", 0))
+        new_status = "TARGET_HIT" if new_price <= target_price else "ACTIVE"
+
+        # Update the item with new price
+        update_response = table.update_item(
+            Key={"user_id": user_id, "item_id": item_id},
+            UpdateExpression="SET last_price = :price, last_checked = :checked, #st = :status",
+            ExpressionAttributeNames={"#st": "status"},
+            ExpressionAttributeValues={
+                ":price": Decimal(str(new_price)),
+                ":checked": now,
+                ":status": new_status,
+            },
+            ReturnValues="ALL_NEW",
+        )
+
+        updated_item = update_response.get("Attributes", {})
+
+        # Send notification if target hit
+        if new_status == "TARGET_HIT" and SNS_TOPIC:
+            sns_client.publish(
+                TopicArn=SNS_TOPIC,
+                Message=json.dumps({
+                    "type": "price_check",
+                    "user_id": user_id,
+                    "item_id": item_id,
+                    "product_name": item.get("product_name"),
+                    "new_price": new_price,
+                    "target_price": target_price,
+                }, default=_decimal_default),
+            )
+
+        return _response(200, {
+            "message": "Price checked successfully",
+            "previous_price": float(item.get("last_price", 0)) if item.get("last_price") else None,
+            "current_price": new_price,
+            "status": new_status,
+            "item": updated_item,
+        })
+
+    except Exception as error:  # pylint: disable=broad-except
+        LOGGER.exception("Failed to check price for item %s", item_id)
+        return _response(502, {"message": "Failed to check price", "detail": str(error)})

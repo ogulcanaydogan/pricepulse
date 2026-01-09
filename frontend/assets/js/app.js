@@ -283,6 +283,16 @@ function showToast(message) {
   setTimeout(() => toast.classList.remove("visible"), 2600);
 }
 
+function showLoading() {
+  const overlay = document.querySelector("#loading-overlay");
+  if (overlay) overlay.classList.add("visible");
+}
+
+function hideLoading() {
+  const overlay = document.querySelector("#loading-overlay");
+  if (overlay) overlay.classList.remove("visible");
+}
+
 function renderDashboard(state) {
   const tableBody = document.querySelector("#watchlist-body");
   const emptyState = document.querySelector("#watchlist-empty");
@@ -297,9 +307,9 @@ function renderDashboard(state) {
 
   if (!state.items.length) {
     tableBody.innerHTML = "";
-    emptyState.hidden = false;
+    if (emptyState) emptyState.hidden = false;
   } else {
-    emptyState.hidden = true;
+    if (emptyState) emptyState.hidden = true;
     tableBody.innerHTML = state.items
       .map(
         (item) => `
@@ -365,11 +375,11 @@ function renderNotifications(state) {
 
   if (!state.notifications.length) {
     container.innerHTML = "";
-    emptyState.hidden = false;
+    if (emptyState) emptyState.hidden = false;
     return;
   }
 
-  emptyState.hidden = true;
+  if (emptyState) emptyState.hidden = true;
   container.innerHTML = state.notifications
     .slice()
     .sort((a, b) => new Date(b.sentAt) - new Date(a.sentAt))
@@ -479,21 +489,24 @@ function handleAddItem(state) {
     currencySelect.value = state.preferences.currency;
   }
 
+  // Populate addedBy dropdown from contacts
+  const addedBySelect = form.querySelector("#addedBy");
+  if (addedBySelect) {
+    const contacts = getContacts(state);
+    addedBySelect.innerHTML = contacts
+      .map((contact) => `<option value="${contact.name}">${contact.name}</option>`)
+      .join("");
+  }
+
   const frequencyToMinutes = (label) => {
-    switch (label) {
-      case "Every 6 hours":
-        return 360;
-      case "Every 8 hours":
-        return 480;
-      case "Every 12 hours":
-        return 720;
-      case "Daily":
-        return 1440;
-      case "Every 2 days":
-        return 2880;
-      default:
-        return 720;
-    }
+    const map = {
+      "Every 6 hours": 360,
+      "Every 8 hours": 480,
+      "Every 12 hours": 720,
+      "Daily": 1440,
+      "Every 2 days": 2880,
+    };
+    return map[label] || 720;
   };
 
   form.addEventListener("submit", async (event) => {
@@ -526,7 +539,12 @@ function handleAddItem(state) {
         showToast("Item added to watchlist");
       }
       saveState(state);
+      // Reset form but preserve currency preference
+      const savedCurrency = currencySelect?.value;
       form.reset();
+      if (currencySelect) {
+        currencySelect.value = state.preferences?.currency || savedCurrency || "TRY";
+      }
     } else {
       try {
         const payload = {
@@ -551,7 +569,12 @@ function handleAddItem(state) {
           await apiClient.createItem(payload);
           showToast("Item added to watchlist");
         }
+        // Reset form but preserve currency preference
+        const savedCurrency = currencySelect?.value;
         form.reset();
+        if (currencySelect && savedCurrency) {
+          currencySelect.value = state.preferences?.currency || savedCurrency;
+        }
         // Refresh the page to show new item
         setTimeout(() => window.location.href = 'index.html', 800);
       } catch (error) {
@@ -653,12 +676,20 @@ function attachAutofillHandler(form, state) {
     }
     if (priceInput && details.current_price !== undefined && details.current_price !== null) {
       const numeric = Number(details.current_price);
-      if (!Number.isNaN(numeric)) {
-        priceInput.value = numeric;
+      if (!Number.isNaN(numeric) && numeric > 0) {
+        // Round to 2 decimal places for display
+        priceInput.value = Math.round(numeric * 100) / 100;
       }
     }
     if (currencySelect && details.currency_code) {
-      currencySelect.value = details.currency_code;
+      // Normalize currency code and check if it's a valid option
+      const normalizedCode = details.currency_code.toUpperCase().trim();
+      const validCurrencies = Array.from(currencySelect.options).map(opt => opt.value);
+      if (validCurrencies.includes(normalizedCode)) {
+        currencySelect.value = normalizedCode;
+      } else {
+        console.warn(`Detected currency ${normalizedCode} not in dropdown, keeping default`);
+      }
     }
     if (hint) {
       hint.textContent =
@@ -692,16 +723,29 @@ function attachAutofillHandler(form, state) {
 
       const details = await apiClient.testExtract(url);
       if (details && (details.product_name || details.current_price)) {
+        const detectedPrice = Number(details.current_price);
+        const priceSeemsSuspicious = detectedPrice <= 0 || detectedPrice > 100000;
+
         applyDetails(
           {
             product_name: details.product_name,
             store: formatStoreName(details.store),
-            current_price: details.current_price,
+            current_price: priceSeemsSuspicious ? null : details.current_price,
             currency_code: details.currency_code
           },
           "live"
         );
-        showToast("Product details detected");
+
+        if (priceSeemsSuspicious && details.current_price) {
+          showToast("Price detected may be incorrect - please verify");
+          if (hint) {
+            hint.textContent = `Detected price (${details.current_price}) seems off - please check manually.`;
+            hint.classList.add("warning");
+            clearDetectHintAfterTimeout(hint);
+          }
+        } else {
+          showToast("Product details detected");
+        }
       } else {
         const guess = guessDetailsFromUrl(url);
         if (guess) {
@@ -811,27 +855,7 @@ function clearDetectHintAfterTimeout(hint, timeout = 6000) {
   }, timeout);
 }
 
-function handleProfile(state) {
-  const form = document.querySelector("#profile-form");
-  if (!form) return;
-
-  form.addEventListener("submit", (event) => {
-    event.preventDefault();
-    state.preferences = {
-      fullName: form.fullName.value,
-      email: form.email.value,
-      timezone: form.timezone.value,
-      currency: form.currency.value,
-      theme: form.theme.value,
-      digestTime: form.digestTime.value,
-      dailyDigest: form.dailyDigest.checked,
-      smsAlerts: form.smsAlerts.checked,
-      familyTags: form.familyTags.checked
-    };
-    saveState(state);
-    showToast("Preferences saved");
-  });
-}
+// handleProfile merged into renderProfile which properly saves contacts
 
 function renderAddItemHints(state) {
   const list = document.querySelector("#recent-items");
@@ -924,6 +948,30 @@ function setActiveNav() {
   });
 }
 
+function wireLogoutButton() {
+  const logoutBtn = document.querySelector("#logout-btn");
+  if (!logoutBtn) return;
+
+  // Show logout button if user is authenticated
+  if (!USE_DEMO_MODE && authService.isAuthenticated()) {
+    logoutBtn.style.display = "inline-block";
+  }
+
+  logoutBtn.addEventListener("click", async (event) => {
+    event.preventDefault();
+    try {
+      await authService.signOut();
+      showToast("Signed out successfully");
+      setTimeout(() => {
+        window.location.href = "login.html";
+      }, 500);
+    } catch (error) {
+      console.error("Logout failed", error);
+      showToast("Failed to sign out");
+    }
+  });
+}
+
 function ensureGuestIdentity() {
   let guestId = localStorage.getItem(GUEST_ID_KEY);
   if (!guestId) {
@@ -954,10 +1002,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   const allowed = await guardProtectedPage();
   if (!allowed) return;
 
+  showLoading();
   const state = await loadState();
+  hideLoading();
 
   setActiveNav();
   wireResetButtons();
+  wireLogoutButton();
 
   switch (document.body.dataset.page) {
     case "dashboard":
@@ -973,7 +1024,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       break;
     case "profile":
       renderProfile(state);
-      handleProfile(state);
       break;
     default:
       break;

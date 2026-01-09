@@ -20,6 +20,7 @@
         <a href="add-item.html" data-page="add-item">Add item</a>
         <a href="notifications.html" data-page="notifications">Notifications</a>
         <a href="profile.html" data-page="profile">Profile</a>
+        <a href="#" id="logout-btn" data-page="logout" style="display:none;">Logout</a>
       </nav>
     </header>
 
@@ -125,9 +126,9 @@
     <div class="footer">© 2025 PricePulse. Crafted for families hunting the best deals.</div>
 
     <div class="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="assets/js/config.js"></script>
-    <script type="module" src="assets/js/auth.js"></script>
-    <script type="module" src="assets/js/api.js"></script>
-    <script type="module" src="assets/js/app.js" defer></script>
+    <div class="loading-overlay" id="loading-overlay">
+      <div class="loading-spinner"></div>
+    </div>
+    <script type="module" src="assets/js/app.js"></script>
   </body>
 </html>
