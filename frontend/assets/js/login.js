@@ -6,6 +6,33 @@ const AWS_CONFIG = {
   userPoolClientId: '1rp3q7m9nuvebskg2d6f997rei'
 };
 
+// Helper to decode JWT payload (without verification - just for reading claims)
+function decodeJwtPayload(token) {
+  try {
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    return JSON.parse(jsonPayload);
+  } catch {
+    return null;
+  }
+}
+
+// Check if JWT token is expired (with 60 second buffer)
+function isTokenExpired(token) {
+  if (!token) return true;
+  const payload = decodeJwtPayload(token);
+  if (!payload || !payload.exp) return true;
+  const expiryTime = payload.exp * 1000;
+  const bufferMs = 60 * 1000;
+  return Date.now() >= expiryTime - bufferMs;
+}
+
 // Simple AuthService (inline, no imports)
 const authService = {
   currentUser: null,
@@ -18,6 +45,11 @@ const authService = {
     const username = localStorage.getItem('pricepulse_username');
 
     if (idToken && accessToken && username) {
+      // Check if token is expired
+      if (isTokenExpired(idToken)) {
+        await this.signOut();
+        return;
+      }
       this.currentUser = username;
       this.idToken = idToken;
       this.accessToken = accessToken;
@@ -71,7 +103,9 @@ const authService = {
   },
 
   isAuthenticated() {
-    return !!this.getIdToken();
+    const token = this.getIdToken();
+    if (!token) return false;
+    return !isTokenExpired(token);
   },
 
   async signOut() {

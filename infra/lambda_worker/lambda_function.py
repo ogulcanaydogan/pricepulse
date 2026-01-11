@@ -58,6 +58,8 @@ PRICE_PATTERNS = [
     re.compile(r"\$\s?(\d+[\d,]*\.?\d*)"),
     re.compile(r"€\s?(\d+[\d,]*\.?\d*)"),
     re.compile(r"£\s?(\d+[\d,]*\.?\d*)"),
+    re.compile(r"₺\s?(\d+[\d,]*\.?\d*)"),
+    re.compile(r"₽\s?(\d+[\d,]*\.?\d*)"),
 ]
 
 
@@ -76,12 +78,14 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             LOGGER.exception("Failed to fetch price for %s: %s", item.url, exc)
             current_price = None
 
-        _update_item_state(item, current_price)
-
         if current_price is None:
+            _update_item_state(item, current_price, target_hit=False)
             continue
 
-        if current_price <= item.target_price:
+        target_hit = current_price <= item.target_price
+        _update_item_state(item, current_price, target_hit=target_hit)
+
+        if target_hit:
             _send_notification(item, current_price)
             notifications_sent += 1
 
@@ -151,7 +155,7 @@ def _fetch_price(url: str) -> Optional[Decimal]:
         return None
 
 
-def _update_item_state(item: Item, current_price: Optional[Decimal]) -> None:
+def _update_item_state(item: Item, current_price: Optional[Decimal], target_hit: bool = False) -> None:
     update_expression = ["last_checked = :now"]
     values: Dict[str, Any] = {":now": datetime.now(timezone.utc).isoformat()}
 
@@ -159,11 +163,21 @@ def _update_item_state(item: Item, current_price: Optional[Decimal]) -> None:
         update_expression.append("last_price = :price")
         values[":price"] = Decimal(str(current_price))
 
-    table.update_item(
-        Key={"user_id": item.user_id, "item_id": item.item_id},
-        UpdateExpression="SET " + ", ".join(update_expression),
-        ExpressionAttributeValues=values,
-    )
+    if target_hit:
+        update_expression.append("#st = :status")
+        values[":status"] = "TARGET_HIT"
+
+    expression_names = {"#st": "status"} if target_hit else None
+
+    update_kwargs: Dict[str, Any] = {
+        "Key": {"user_id": item.user_id, "item_id": item.item_id},
+        "UpdateExpression": "SET " + ", ".join(update_expression),
+        "ExpressionAttributeValues": values,
+    }
+    if expression_names:
+        update_kwargs["ExpressionAttributeNames"] = expression_names
+
+    table.update_item(**update_kwargs)
 
 
 def _send_notification(item: Item, current_price: Decimal) -> None:

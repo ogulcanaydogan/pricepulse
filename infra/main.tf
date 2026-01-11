@@ -420,16 +420,17 @@ resource "aws_cognito_user_pool_domain" "main" {
 }
 
 resource "aws_sns_topic_subscription" "email" {
+  count     = var.notification_email != "" ? 1 : 0
   topic_arn = aws_sns_topic.alerts.arn
   protocol  = "email"
-  endpoint  = "admin@example.com"
+  endpoint  = var.notification_email
 }
 
 resource "aws_sns_topic_subscription" "sms" {
-  count     = var.enable_sms_notifications ? 1 : 0
+  count     = var.enable_sms_notifications && var.notification_phone != "" ? 1 : 0
   topic_arn = aws_sns_topic.alerts.arn
   protocol  = "sms"
-  endpoint  = "+10000000000"
+  endpoint  = var.notification_phone
 }
 
 # S3 Bucket for static website hosting

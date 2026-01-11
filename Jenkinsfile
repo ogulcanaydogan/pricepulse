@@ -2,7 +2,8 @@ pipeline {
     agent any
 
     environment {
-        AWS_DEFAULT_REGION = credentials('pricepulse-aws-region')
+        AWS_DEFAULT_REGION = 'us-east-1'
+        TF_IN_AUTOMATION = 'true'
     }
 
     stages {
@@ -12,16 +13,18 @@ pipeline {
             }
         }
 
-        stage('Install Terraform') {
+        stage('Verify Tools') {
             steps {
-                sh 'terraform -version || true'
+                sh 'terraform -version || echo "Terraform not installed"'
+                sh 'python3 --version || echo "Python3 not installed"'
+                sh 'pip3 --version || echo "pip3 not installed"'
             }
         }
 
         stage('Terraform Init & Validate') {
             steps {
                 dir('infra') {
-                    sh 'terraform init'
+                    sh 'terraform init -input=false'
                     sh 'terraform validate'
                 }
             }
@@ -30,8 +33,10 @@ pipeline {
         stage('Build Lambda Packages') {
             steps {
                 dir('infra') {
-                    sh 'pip install -r lambda_api/requirements.txt -t lambda_api/'
-                    sh 'pip install -r lambda_worker/requirements.txt -t lambda_worker/'
+                    sh '''
+                        python3 -m pip install -r lambda_api/requirements.txt -t lambda_api/ --quiet
+                        python3 -m pip install -r lambda_worker/requirements.txt -t lambda_worker/ --quiet
+                    '''
                 }
             }
         }
@@ -42,7 +47,7 @@ pipeline {
             }
             steps {
                 dir('infra') {
-                    sh 'terraform plan -out=tfplan'
+                    sh 'terraform plan -out=tfplan -input=false'
                 }
             }
         }
@@ -58,21 +63,39 @@ pipeline {
             }
         }
 
-        stage('Frontend Build') {
+        stage('Deploy Frontend') {
+            when {
+                branch 'main'
+            }
             steps {
-                dir('frontend') {
-                    sh 'npm install'
-                    sh 'npm run build'
+                dir('infra') {
+                    sh '''
+                        if [ -f deploy-frontend.sh ]; then
+                            chmod +x deploy-frontend.sh
+                            ./deploy-frontend.sh
+                        else
+                            echo "Frontend deployment script not found, skipping..."
+                        fi
+                    '''
                 }
             }
         }
     }
 
     post {
+        always {
+            cleanWs(cleanWhenNotBuilt: false,
+                    deleteDirs: true,
+                    disableDeferredWipeout: true,
+                    notFailBuild: true,
+                    patterns: [[pattern: '.terraform/**', type: 'EXCLUDE'],
+                               [pattern: '**/*.tfstate*', type: 'EXCLUDE']])
+        }
         failure {
-            mail to: 'alerts@example.com',
-                 subject: 'PricePulse Pipeline Failed',
-                 body: "Check Jenkins for more information."
+            echo 'Pipeline failed! Check the logs above for details.'
+        }
+        success {
+            echo 'Pipeline completed successfully!'
         }
     }
 }

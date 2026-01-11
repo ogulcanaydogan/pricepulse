@@ -44,7 +44,7 @@ class ApiClient {
 
     try {
       const response = await fetch(`${this.baseUrl}${endpoint}`, config);
-      
+
       if (response.status === 401) {
         // Token expired, sign out user
         await authService.signOut();
@@ -53,11 +53,27 @@ class ApiClient {
       }
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Request failed');
+        let errorMessage = 'Request failed';
+        try {
+          const error = await response.json();
+          errorMessage = error.message || errorMessage;
+        } catch {
+          // Response body might be empty or not JSON
+        }
+        throw new Error(errorMessage);
       }
 
-      return await response.json();
+      // Handle empty responses (204 No Content, etc.)
+      if (response.status === 204 || response.headers.get('content-length') === '0') {
+        return null;
+      }
+
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        return await response.json();
+      }
+
+      return null;
     } catch (error) {
       console.error('API request error:', error);
       throw error;

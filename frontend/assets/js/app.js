@@ -35,12 +35,12 @@ const SAMPLE_DATA = {
       currentPrice: 128,
       targetPrice: 110,
       currency: "EUR",
-      lastChecked: "2025-02-23T07:45:00Z",
+      lastChecked: "2026-01-10T07:45:00Z",
       status: "Tracking",
       addedBy: "Ogulcan",
       notificationEmail: "ogulcan@example.com",
       frequency: "Every 12 hours",
-      lastNotification: "2025-02-19T20:15:00Z"
+      lastNotification: "2026-01-06T20:15:00Z"
     },
     {
       id: "itm-2",
@@ -50,7 +50,7 @@ const SAMPLE_DATA = {
       currentPrice: 529,
       targetPrice: 499,
       currency: "GBP",
-      lastChecked: "2025-02-23T09:05:00Z",
+      lastChecked: "2026-01-10T09:05:00Z",
       status: "Watching",
       addedBy: "Muge",
       notificationEmail: "muge@example.com",
@@ -65,12 +65,12 @@ const SAMPLE_DATA = {
       currentPrice: 119,
       targetPrice: 99,
       currency: "GBP",
-      lastChecked: "2025-02-22T21:40:00Z",
+      lastChecked: "2026-01-09T21:40:00Z",
       status: "Target hit",
       addedBy: "Basak",
       notificationEmail: "basak@example.com",
       frequency: "Every 6 hours",
-      lastNotification: "2025-02-22T21:45:00Z"
+      lastNotification: "2026-01-09T21:45:00Z"
     }
   ],
   notifications: [
@@ -80,7 +80,7 @@ const SAMPLE_DATA = {
       itemName: "LEGO NASA Artemis Rocket",
       message: "Price dropped to £99.00 (target £99.00).",
       channel: "Email",
-      sentAt: "2025-02-22T21:45:00Z"
+      sentAt: "2026-01-09T21:45:00Z"
     },
     {
       id: "ntf-2",
@@ -88,7 +88,7 @@ const SAMPLE_DATA = {
       itemName: "Camper Oruga Sandals",
       message: "Quick heads-up! Price dipped to £112.00.",
       channel: "Push",
-      sentAt: "2025-02-19T20:15:00Z"
+      sentAt: "2026-01-06T20:15:00Z"
     }
   ]
 };

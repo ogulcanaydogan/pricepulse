@@ -45,3 +45,15 @@ variable "auto_confirm_signup" {
   default     = true
   description = "Whether the auth Lambda should automatically confirm new Cognito signups."
 }
+
+variable "notification_email" {
+  type        = string
+  description = "Email address to receive price drop notifications."
+  default     = ""
+}
+
+variable "notification_phone" {
+  type        = string
+  description = "Phone number (E.164 format, e.g. +15551234567) to receive SMS alerts."
+  default     = ""
+}

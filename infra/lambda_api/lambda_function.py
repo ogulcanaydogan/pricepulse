@@ -181,8 +181,12 @@ def _create_item(user_id: str, body: Dict[str, Any]) -> Dict[str, Any]:
         item["added_by"] = body["added_by"]
     if body.get("notification_email"):
         item["notification_email"] = body["notification_email"]
+    if body.get("notification_phone"):
+        item["notification_phone"] = body["notification_phone"]
     if body.get("currency_code"):
         item["currency_code"] = body["currency_code"]
+    if body.get("store"):
+        item["store"] = body["store"]
 
     table.put_item(Item=item)
     return _response(201, item)
